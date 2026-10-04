@@ -3,173 +3,127 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { previousRange, resolveRange, statsBy, summarize, trend, type RangeKey } from "@/lib/metrics";
-import { DAY, NOW, PACKAGES, TEAMS, pkgById, startOfDay, userById } from "@/lib/mock";
-import { fmtDateTime, fmtInt, fmtPct, isoDate, parseIsoDate, relTime } from "@/lib/format";
-import { OUTCOME_LABEL, STAGE_LABEL } from "@/lib/status";
+import { USERS, pkgById, userById, NOW } from "@/lib/mock";
+import { fmtInt, fmtPct, fmtTime, relTime } from "@/lib/format";
 import { PageHeader, Segmented, Skeleton, Status } from "@/components/ui";
-import { StackedBar, TrendChart } from "@/components/charts";
+import { TrendChart } from "@/components/charts";
 
-const RANGES: { value: RangeKey; label: string }[] = [
-  { value: "today", label: "Today" }, { value: "yesterday", label: "Yesterday" }, { value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "custom", label: "Custom" },
-];
+const RANGES: { value: RangeKey; label: string }[] = [{ value: "today", label: "Today" }, { value: "week", label: "Week" }, { value: "month", label: "Month" }];
 
-export default function Overview() {
-  const { orders, role } = useStore();
+export default function Home() {
+  const { orders, role, actor } = useStore();
   const [key, setKey] = useState<RangeKey>("week");
-  const [from, setFrom] = useState(isoDate(startOfDay(NOW) - 6 * DAY));
-  const [to, setTo] = useState(isoDate(startOfDay(NOW)));
-  const [team, setTeam] = useState("all");
   const [loading, setLoading] = useState(true);
-  useEffect(() => { setLoading(true); const t = setTimeout(() => setLoading(false), 220); return () => clearTimeout(t); }, [key, from, to, team, role]);
+  useEffect(() => { setLoading(true); const t = setTimeout(() => setLoading(false), 200); return () => clearTimeout(t); }, [key, role]);
 
-  const range = useMemo(() => resolveRange(key, { from: parseIsoDate(from), to: parseIsoDate(to) }), [key, from, to]);
-  const scoped = useMemo(() => (team === "all" ? orders : orders.filter((o) => o.teamId === team)), [orders, team]);
-  const s = useMemo(() => summarize(scoped, range), [scoped, range]);
-  const prev = useMemo(() => summarize(scoped, previousRange(range)), [scoped, range]);
-  const buckets = useMemo(() => trend(scoped, range), [scoped, range]);
+  const range = useMemo(() => resolveRange(key), [key]);
+  const s = useMemo(() => summarize(orders, range), [orders, range]);
+  const prev = useMemo(() => summarize(orders, previousRange(range)), [orders, range]);
+  const buckets = useMemo(() => trend(orders, range), [orders, range]);
+  const open = useMemo(() => orders.filter((o) => !o.outcome), [orders]);
+  const pipeline = [
+    { label: "Submitted", n: open.filter((o) => o.stage === "submitted").length, q: "submitted" },
+    { label: "Processing", n: open.filter((o) => o.stage === "processing").length, q: "processing" },
+    { label: "Pending", n: open.filter((o) => o.stage === "pending").length, q: "pending" },
+    { label: "Scheduled", n: open.filter((o) => o.stage === "scheduled").length, q: "scheduled" },
+    { label: "Installed", n: open.filter((o) => o.stage === "installed").length, q: "installed" },
+  ];
+  const attention = useMemo(() => orders.filter((o) => o.attention && !o.outcome).sort((a, b) => a.updatedAt - b.updatedAt), [orders]);
+  const recent = useMemo(() => orders.slice().sort((a, b) => b.submittedAt - a.submittedAt).slice(0, 7), [orders]);
+  const top = useMemo(() => [...statsBy(orders, range, (o) => o.repId).values()].sort((a, b) => b.submitted - a.submitted).slice(0, 5), [orders, range]);
+  const delta = (a: number, b: number) => (b ? `${a >= b ? "↑" : "↓"} ${Math.abs(Math.round(((a - b) / b) * 100))}% vs previous` : "");
+  const first = USERS.find((u) => u.id === actor.id)!.name.split(" ")[0];
 
-  const cohort = useMemo(() => scoped.filter((o) => o.submittedAt >= range.start && o.submittedAt < range.end), [scoped, range]);
-  const dist = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const o of cohort) { const k = o.outcome ? OUTCOME_LABEL[o.outcome] : STAGE_LABEL[o.stage]; m.set(k, (m.get(k) ?? 0) + 1); }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [cohort]);
-  const palette: Record<string, string> = { Submitted: "#8a8a98", Processing: "var(--info)", Pending: "var(--warn)", Scheduled: "#6fa8e8", Installed: "var(--ok)", Activated: "#0b5c42", Cancelled: "var(--bad)", Failed: "#e0746b", Duplicate: "#b4b4c0", Chargeback: "#7a1710" };
-
-  const top = useMemo(() => [...statsBy(scoped, range, (o) => o.repId).values()].sort((a, b) => b.submitted - a.submitted).slice(0, 8), [scoped, range]);
-  const attention = useMemo(() => scoped.filter((o) => o.attention && !o.outcome).sort((a, b) => a.updatedAt - b.updatedAt).slice(0, 6), [scoped]);
-  const recent = useMemo(() => [...scoped].sort((a, b) => b.submittedAt - a.submittedAt).slice(0, 10), [scoped]);
-  const installs = useMemo(() => scoped.filter((o) => o.installedAt).sort((a, b) => b.installedAt! - a.installedAt!).slice(0, 8), [scoped]);
-  const pkgMix = useMemo(() => {
-    const m = new Map<string, number>(); for (const o of cohort) m.set(o.packageId, (m.get(o.packageId) ?? 0) + 1);
-    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [cohort]);
-  const teamFallout = useMemo(() => TEAMS.map((t) => {
-    const c = cohort.filter((o) => o.teamId === t.id); const f = c.filter((o) => o.outcome === "cancelled" || o.outcome === "failed" || o.outcome === "duplicate").length;
-    return { name: t.name, n: c.length, rate: c.length ? f / c.length : NaN };
-  }).filter((t) => t.n), [cohort]);
-
-  const delta = (a: number, b: number) => (b ? `${a >= b ? "+" : "−"}${Math.abs(Math.round(((a - b) / b) * 100))}% vs prior` : "");
-  const kpis: { label: string; value: string; sub?: string }[] = [
-    { label: "Submitted", value: fmtInt(s.submitted), sub: delta(s.submitted, prev.submitted) },
-    { label: "Installed", value: fmtInt(s.installed), sub: delta(s.installed, prev.installed) },
-    { label: "Activation rate", value: fmtPct(s.activationRate), sub: `${s.activated} activated` },
-    { label: "Pending", value: fmtInt(s.pending), sub: `${s.awaitingInstall} awaiting install` },
-    { label: "Cancelled", value: fmtInt(s.cancelled), sub: `fallout ${fmtPct(s.falloutRate)}` },
-    { label: "Chargebacks", value: fmtInt(s.chargebacks) },
-    { label: role === "rep" ? "Avg / day" : "Active reps", value: role === "rep" ? (s.submitted / Math.max(1, Math.round((Math.min(range.end, NOW + DAY) - range.start) / DAY))).toFixed(1) : fmtInt(s.activeReps) },
-    { label: "Commission", value: "—", sub: "Module not enabled" },
+  const kpis = [
+    { label: "Submitted", value: fmtInt(s.submitted), sub: delta(s.submitted, prev.submitted), href: "/orders" },
+    { label: "Installed", value: fmtInt(s.installed), sub: delta(s.installed, prev.installed), href: "/orders?view=installed" },
+    { label: "Activation rate", value: fmtPct(s.activationRate), sub: `${s.activated} activated`, href: "/orders?status=activated" },
+    { label: "Needs attention", value: fmtInt(attention.length), sub: attention.length ? "Review now →" : "All clear", href: "/orders?view=attention", warn: attention.length > 0 },
   ];
 
   return (
     <>
-      <PageHeader title="The Sales House" sub={role === "rep" ? "My sales" : "Sales Operations"}
-        actions={<>
-          {role === "admin" && (
-            <select aria-label="Team" className="input input-sm w-auto" value={team} onChange={(e) => setTeam(e.target.value)}>
-              <option value="all">All teams</option>{TEAMS.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          )}
-          <Segmented label="Date range" value={key} onChange={setKey} options={RANGES} />
-        </>}>
-        {key === "custom" && (
-          <div className="mt-3 flex items-center gap-2">
-            <label className="sr-only" htmlFor="from">From</label><input id="from" type="date" className="input input-sm w-auto" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
-            <span className="text-muted">to</span>
-            <label className="sr-only" htmlFor="to">To</label><input id="to" type="date" className="input input-sm w-auto" value={to} min={from} max={isoDate(startOfDay(NOW))} onChange={(e) => setTo(e.target.value)} />
-          </div>
-        )}
-      </PageHeader>
+      <PageHeader title={`Good afternoon, ${first}`} sub={role === "rep" ? "Your sales at a glance." : "Here’s how the team is doing."} actions={<Segmented label="Date range" value={key} onChange={setKey} options={RANGES} />} />
 
-      <div className="panel mb-4 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 [&>*]:border-b [&>*]:border-r [&>*]:border-line">
-        {kpis.map((k) => (
-          <div key={k.label} className="px-4 py-3">
+      <div className="panel mb-4 grid grid-cols-2 lg:grid-cols-4 [&>*:not(:last-child)]:border-r [&>*]:border-line">
+        {kpis.map((k, i) => (
+          <Link key={k.label} href={k.href} className={`group block px-5 py-4 no-underline transition-colors hover:bg-subtle ${i < 2 ? "max-lg:border-b" : ""} ${i === 0 ? "rounded-tl-xl max-lg:rounded-tl-xl lg:rounded-l-xl" : ""} ${i === 3 ? "lg:rounded-r-xl" : ""}`}>
             <div className="eyebrow">{k.label}</div>
-            {loading ? <Skeleton className="mt-1 h-7 w-14" /> : <div className="text-[22px] font-semibold leading-7 tracking-tight tabular-nums">{k.value}</div>}
-            <div className="min-h-4 text-[12px] text-muted">{loading ? "" : k.sub}</div>
-          </div>
+            {loading ? <Skeleton className="mt-2 h-9 w-16" /> : <div className="big mt-1" style={k.warn ? { color: "var(--warn)" } : undefined}>{k.value}</div>}
+            <div className="mt-1 min-h-5 text-[12px] text-muted">{loading ? "" : k.sub}</div>
+          </Link>
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="space-y-4 xl:col-span-2">
-          <section className="panel" aria-labelledby="h-trend">
-            <div className="panel-h"><h2 id="h-trend">Sales trend</h2><span className="text-[12px] text-muted">{range.label}</span></div>
-            <div className="p-4">{loading ? <Skeleton className="h-[220px] w-full" /> : <TrendChart data={buckets} />}</div>
-          </section>
-
-          <section className="panel" aria-labelledby="h-recent">
-            <div className="panel-h"><h2 id="h-recent">Recent submissions</h2><Link href="/orders" className="text-[12px] text-brand">View all orders</Link></div>
-            <div className="overflow-x-auto">
-              <table className="tbl"><caption className="sr-only">Most recent submissions</caption>
-                <thead><tr><th>Order</th><th>Submitted</th>{role !== "rep" && <th>Agent</th>}<th>Customer</th><th>Package</th><th>Status</th></tr></thead>
-                <tbody>{recent.map((o) => (
-                  <tr key={o.id}>
-                    <td><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link></td>
-                    <td className="text-muted">{fmtDateTime(o.submittedAt)}</td>
-                    {role !== "rep" && <td>{userById(o.repId)?.name}</td>}
-                    <td>{o.customer.name}</td><td>{pkgById(o.packageId).name}</td><td><Status o={o} /></td>
-                  </tr>))}</tbody>
-              </table>
-            </div>
-          </section>
+      <section className="panel mb-4" aria-label="Order pipeline">
+        <div className="panel-h"><h2>Pipeline</h2><span className="text-[12px] text-muted">Open orders right now</span></div>
+        <div className="grid grid-cols-2 gap-px p-3 sm:grid-cols-5">
+          {pipeline.map((p, i) => (
+            <Link key={p.label} href={`/orders?status=${p.q}`} className="group relative rounded-lg px-3 py-3 no-underline transition-colors hover:bg-subtle">
+              <div className="text-[12px] text-muted">{p.label}</div>
+              <div className="text-[24px] font-semibold leading-8 tracking-tight tabular-nums">{loading ? "–" : p.n}</div>
+              {i < pipeline.length - 1 && <span aria-hidden="true" className="absolute right-0 top-1/2 hidden -translate-y-1/2 text-faint sm:block">›</span>}
+            </Link>
+          ))}
         </div>
+      </section>
 
-        <div className="space-y-4">
-          <section className="panel" aria-labelledby="h-status">
-            <div className="panel-h"><h2 id="h-status">Status distribution</h2><span className="text-[12px] text-muted">{cohort.length} orders</span></div>
-            <div className="p-4">
-              {loading ? <Skeleton className="h-24 w-full" /> : cohort.length === 0 ? <p className="m-0 text-muted">No orders in this range.</p> : <>
-                <StackedBar parts={dist.map(([label, value]) => ({ label, value, color: palette[label] ?? "#999" }))} />
-                <table className="tbl mt-2"><tbody>{dist.map(([label, v]) => (
-                  <tr key={label}><td style={{ height: 30 }}><span className="inline-flex items-center gap-2"><i className="h-2 w-2 rounded-sm" style={{ background: palette[label] }} />{label}</span></td><td className="r" style={{ height: 30 }}>{v}</td><td className="r text-muted" style={{ height: 30 }}>{fmtPct(v / cohort.length)}</td></tr>))}</tbody></table>
-              </>}
-            </div>
-          </section>
+      <div className="grid gap-4 lg:grid-cols-5 [&>*]:min-w-0">
+        <section className="panel lg:col-span-3" aria-labelledby="h-trend">
+          <div className="panel-h"><h2 id="h-trend">Sales</h2><span className="text-[12px] text-muted">{range.label}</span></div>
+          <div className="p-5">{loading ? <Skeleton className="h-[230px] w-full" /> : <TrendChart data={buckets} />}</div>
+        </section>
 
-          {role !== "rep" && (
-            <section className="panel" aria-labelledby="h-top">
-              <div className="panel-h"><h2 id="h-top">Top representatives</h2><Link href="/team/leaderboard" className="text-[12px] text-brand">Leaderboard</Link></div>
-              <table className="tbl"><thead><tr><th>Rep</th><th className="r">Sub</th><th className="r">Inst</th><th className="r">Act %</th></tr></thead>
-                <tbody>{top.map((r) => (
-                  <tr key={r.repId}><td><Link className="rowlink" href={`/team/representatives/${r.repId}`}>{userById(r.repId)?.name}</Link></td><td className="r">{r.submitted}</td><td className="r">{r.installed}</td><td className="r">{fmtPct(r.activationRate)}</td></tr>))}
-                </tbody></table>
-            </section>
-          )}
+        <section className="panel lg:col-span-2" aria-labelledby="h-attn">
+          <div className="panel-h"><h2 id="h-attn">Needs attention</h2><Link href="/orders?view=attention" className="text-[12px] text-brand no-underline">View all</Link></div>
+          {attention.length === 0 ? <p className="m-0 p-5 text-muted">Nothing needs attention.</p> : (
+            <ul className="m-0 list-none px-2 pb-2 pt-2">{attention.slice(0, 5).map((o) => (
+              <li key={o.id}>
+                <Link href={`/orders/${o.no}`} className="block rounded-lg px-3 py-2 no-underline hover:bg-subtle">
+                  <div className="flex justify-between gap-2"><span><span className="mono">{o.no}</span> <span className="text-muted">· {o.customer.name}</span></span><span className="shrink-0 text-[12px] text-faint">{relTime(o.updatedAt)}</span></div>
+                  <div className="truncate text-[12px] text-warn">{o.attention}</div>
+                </Link>
+              </li>))}</ul>)}
+        </section>
 
-          <section className="panel" aria-labelledby="h-attn">
-            <div className="panel-h"><h2 id="h-attn">Needs attention</h2>{role !== "rep" && <Link href="/ops/exceptions" className="text-[12px] text-brand">Open queue</Link>}</div>
-            {attention.length === 0 ? <p className="m-0 p-4 text-muted">Nothing needs attention.</p> : (
-              <ul className="m-0 list-none p-0">{attention.map((o) => (
-                <li key={o.id} className="flex items-start justify-between gap-3 border-b border-line px-4 py-2 last:border-0">
-                  <div className="min-w-0"><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link> <span className="text-muted">· {o.customer.name}</span><div className="truncate text-[12px] text-muted">{o.attention}</div></div>
-                  <span className="shrink-0 text-[12px] text-muted">{relTime(o.updatedAt)}</span>
-                </li>))}</ul>)}
-          </section>
-
-          <section className="panel" aria-labelledby="h-inst">
-            <div className="panel-h"><h2 id="h-inst">Recent installs</h2></div>
-            <ul className="m-0 list-none p-0">{installs.map((o) => (
-              <li key={o.id} className="flex items-center justify-between gap-3 border-b border-line px-4 py-2 last:border-0">
-                <span className="min-w-0 truncate"><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link> <span className="text-muted">· {o.customer.name}</span></span>
-                <span className="shrink-0 text-[12px] text-muted">{relTime(o.installedAt!)}</span>
-              </li>))}</ul>
-          </section>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <section className="panel" aria-labelledby="h-fall">
-              <div className="panel-h"><h2 id="h-fall">Cancellation / fallout</h2><span className="text-[12px] text-muted">{fmtPct(s.falloutRate)} overall</span></div>
-              <table className="tbl"><thead><tr><th>Team</th><th className="r">Orders</th><th className="r">Fallout</th></tr></thead>
-                <tbody>{teamFallout.map((t) => <tr key={t.name}><td>{t.name}</td><td className="r">{t.n}</td><td className="r">{fmtPct(t.rate)}</td></tr>)}</tbody></table>
-            </section>
-            <section className="panel" aria-labelledby="h-mix">
-              <div className="panel-h"><h2 id="h-mix">Package mix</h2></div>
-              <table className="tbl"><tbody>{pkgMix.map(([id, n]) => <tr key={id}><td>{PACKAGES.find((p) => p.id === id)?.name}</td><td className="r">{n}</td><td className="r text-muted">{fmtPct(n / Math.max(1, cohort.length))}</td></tr>)}</tbody></table>
-            </section>
+        <section className="panel lg:col-span-3" aria-labelledby="h-recent">
+          <div className="panel-h"><h2 id="h-recent">Latest sales</h2><Link href="/orders" className="text-[12px] text-brand no-underline">All orders</Link></div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="tbl"><caption className="sr-only">Latest sales</caption>
+              <tbody>{recent.map((o) => (
+                <tr key={o.id}>
+                  <td><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link></td>
+                  <td>{o.customer.name}<div className="text-[12px] text-faint">{pkgById(o.packageId).name}</div></td>
+                  {role !== "rep" && <td className="max-sm:hidden text-muted">{userById(o.repId)?.name}</td>}
+                  <td><Status o={o} /></td>
+                  <td className="r text-faint">{NOW - o.submittedAt < 86400000 ? fmtTime(o.submittedAt) : relTime(o.submittedAt)}</td>
+                </tr>))}</tbody>
+            </table>
           </div>
-        </div>
+        </section>
+
+        {role !== "rep" ? (
+          <section className="panel lg:col-span-2" aria-labelledby="h-top">
+            <div className="panel-h"><h2 id="h-top">Top reps</h2><Link href="/team" className="text-[12px] text-brand no-underline">Leaderboard</Link></div>
+            <ol className="m-0 list-none px-2 pb-2 pt-2">{top.map((r, i) => (
+              <li key={r.repId}>
+                <Link href={`/team/${r.repId}`} className="flex items-center gap-3 rounded-lg px-3 py-2 no-underline hover:bg-subtle">
+                  <span className="w-4 text-[12px] text-faint tabular-nums">{i + 1}</span>
+                  <span className="flex-1 truncate font-medium">{userById(r.repId)?.name}</span>
+                  <span className="tabular-nums text-muted">{r.submitted}</span>
+                </Link>
+              </li>))}</ol>
+          </section>
+        ) : (
+          <section className="panel lg:col-span-2">
+            <div className="p-5">
+              <div className="eyebrow">Next step</div>
+              <p className="mb-4 mt-1">Just processed a sale in Zoey? Enter it now so your manager sees it.</p>
+              <Link href="/orders/new" className="btn btn-primary btn-lg w-full no-underline">New sale</Link>
+            </div>
+          </section>
+        )}
       </div>
-      <p className="mt-4 text-[12px] text-faint">Sample data. Metric definitions: Installed counts install events in range; activation rate is cohort-based (orders submitted in range that reached Activated).</p>
     </>
   );
 }

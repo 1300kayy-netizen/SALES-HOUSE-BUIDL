@@ -9,39 +9,25 @@ import { cn, Dialog } from "./ui";
 import { Brand } from "./brand";
 import { statusOf } from "@/lib/status";
 
-interface Item { href: string; label: string; roles: Role[]; badge?: "exceptions" }
-interface Group { label?: string; items: Item[] }
-const ALL: Role[] = ["admin", "manager", "rep"];
-const AM: Role[] = ["admin", "manager"];
-const NAV: Group[] = [
-  { items: [{ href: "/", label: "Overview", roles: ALL }] },
-  { label: "Sales", items: [{ href: "/orders", label: "Orders", roles: ALL }, { href: "/orders/new", label: "Submit Sale", roles: ALL }] },
-  { label: "Team", items: [
-    { href: "/team/representatives", label: "Representatives", roles: AM }, { href: "/team/teams", label: "Teams", roles: AM },
-    { href: "/team/leaderboard", label: "Leaderboard", roles: ALL } ] },
-  { label: "Operations", items: [
-    { href: "/ops/exceptions", label: "Exceptions", roles: AM, badge: "exceptions" }, { href: "/ops/installations", label: "Installations", roles: AM },
-    { href: "/ops/chargebacks", label: "Chargebacks", roles: AM } ] },
-  { label: "Reporting", items: [
-    { href: "/reports/performance", label: "Performance", roles: AM }, { href: "/reports/commissions", label: "Commissions", roles: AM },
-    { href: "/reports/exports", label: "Exports", roles: AM } ] },
-  { label: "Admin", items: [
-    { href: "/admin/packages", label: "Packages", roles: ["admin"] }, { href: "/admin/dealer-accounts", label: "Dealer Accounts", roles: ["admin"] },
-    { href: "/admin/users", label: "Users", roles: ["admin"] }, { href: "/admin/audit", label: "Audit Log", roles: ["admin"] },
-    { href: "/admin/settings", label: "Settings", roles: ["admin"] } ] },
+interface Item { href: string; label: string; roles: Role[]; badge?: boolean }
+const NAV: Item[] = [
+  { href: "/", label: "Home", roles: ["admin", "manager", "rep"] },
+  { href: "/orders", label: "Orders", roles: ["admin", "manager", "rep"], badge: true },
+  { href: "/team", label: "Team", roles: ["admin", "manager", "rep"] },
+  { href: "/reports", label: "Reports", roles: ["admin", "manager"] },
+  { href: "/admin", label: "Admin", roles: ["admin"] },
 ];
-
-const active = (path: string, href: string) => (href === "/" ? path === "/" : path === href || (path.startsWith(href + "/") && !(href === "/orders" && path === "/orders/new")));
+const active = (path: string, href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/")) && !(href === "/orders" && path === "/orders/new");
 
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const { role, setRole, orders, actor } = useStore();
   const [mobileNav, setMobileNav] = useState(false);
   const [palette, setPalette] = useState(false);
-  const router = useRouter();
 
-  const exceptions = useMemo(() => orders.filter((o) => o.attention && !o.outcome).length, [orders]);
-  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((i) => i.roles.includes(role)) })).filter((g) => g.items.length);
+  const attention = useMemo(() => orders.filter((o) => o.attention && !o.outcome).length, [orders]);
+  const items = NAV.filter((i) => i.roles.includes(role));
   const me = USERS.find((u) => u.id === actor.id)!;
 
   useEffect(() => setMobileNav(false), [path]);
@@ -56,32 +42,26 @@ export function Shell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", k);
   }, [router]);
 
-  // Route guard (prototype): out-of-scope pages bounce to Overview
-  const allowed = groups.some((g) => g.items.some((i) => active(path, i.href))) || path.startsWith("/orders/") || path.startsWith("/team/representatives/");
+  const allowed = items.some((i) => active(path, i.href)) || path === "/orders/new" || path.startsWith("/orders/");
   useEffect(() => { if (!allowed) router.replace("/"); }, [allowed, router]);
-
-  const crumbs = path === "/" ? ["Overview"] : path.split("/").filter(Boolean).map((s) => (/^[a-z-]+$/.test(s) ? s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : s));
 
   const nav = (
     <nav aria-label="Primary" className="flex h-full flex-col">
-      <div className="px-4 pb-3 pt-4"><Brand /></div>
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
-        {groups.map((g, gi) => (
-          <div key={gi} className="mb-3">
-            {g.label && <div className="eyebrow px-2 pb-1 pt-2">{g.label}</div>}
-            {g.items.map((i) => {
-              const on = active(path, i.href);
-              return (
-                <Link key={i.href} href={i.href} aria-current={on ? "page" : undefined}
-                  className={cn("relative flex h-8 items-center justify-between rounded-md px-2.5 no-underline transition-colors", on ? "bg-brand-bg font-medium text-brand" : "text-ink hover:bg-subtle")}>
-                  {on && <span className="absolute -left-2 top-1.5 h-5 w-0.5 rounded bg-brand" />}
-                  {i.label}
-                  {i.badge === "exceptions" && exceptions > 0 && <span className="rounded bg-subtle px-1.5 text-[11px] font-semibold text-muted">{exceptions}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+      <div className="px-4 pb-4 pt-5"><Brand /></div>
+      <div className="px-3 pb-3">
+        <Link href="/orders/new" className="btn btn-primary w-full" aria-keyshortcuts="n">New sale <span className="ml-auto rounded bg-white/20 px-1.5 text-[11px]">N</span></Link>
+      </div>
+      <div className="flex-1 px-3">
+        {items.map((i) => {
+          const on = active(path, i.href);
+          return (
+            <Link key={i.href} href={i.href} aria-current={on ? "page" : undefined}
+              className={cn("mb-0.5 flex h-9 items-center justify-between rounded-lg px-3 no-underline transition-colors", on ? "bg-brand-bg font-medium text-ink" : "text-muted hover:bg-subtle hover:text-ink")}>
+              <span className={on ? "text-brand" : ""}>{i.label === "Team" && role === "rep" ? "Leaderboard" : i.label}</span>
+              {i.badge && attention > 0 && role !== "rep" && <span className="rounded-full bg-[var(--warn-bg)] px-1.5 text-[11px] font-semibold text-warn">{attention}</span>}
+            </Link>
+          );
+        })}
       </div>
       <UserMenu name={me.name} role={role} setRole={setRole} />
     </nav>
@@ -90,37 +70,34 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
-      <aside className="fixed inset-y-0 left-0 hidden w-[232px] border-r border-line bg-surface lg:block">{nav}</aside>
+      <aside className="fixed inset-y-0 left-0 hidden w-[216px] border-r border-line bg-surface lg:block">{nav}</aside>
       {mobileNav && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <button aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setMobileNav(false)} />
+          <button aria-label="Close menu" className="absolute inset-0 bg-black/60" onClick={() => setMobileNav(false)} />
           <aside className="fade absolute inset-y-0 left-0 w-[260px] border-r border-line bg-surface">{nav}</aside>
         </div>
       )}
-      <div className="lg:pl-[232px]">
-        <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-0 sm:px-6">
+      <div className="min-w-0 lg:pl-[216px]">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur sm:px-8">
           <button className="btn btn-sm lg:hidden" aria-label="Open menu" onClick={() => setMobileNav(true)}>Menu</button>
-          <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-muted sm:flex">
-            <span>SalesOS</span>{crumbs.map((c, i) => <span key={i} className="flex items-center gap-1.5"><span className="text-faint">/</span><span className={i === crumbs.length - 1 ? "text-ink" : ""}>{c}</span></span>)}
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden rounded border border-line px-2 py-0.5 text-[11px] font-medium text-muted md:inline" title="All data on this site is generated sample data">Prototype · sample data</span>
-            <button className="btn btn-sm gap-2 text-muted" onClick={() => setPalette(true)} aria-label="Open command palette">
-              <span>Search</span><span className="kbd">⌘K</span>
-            </button>
-            {path !== "/orders/new" && <Link href="/orders/new" className="btn btn-sm btn-primary no-underline">Submit sale</Link>}
+          <button onClick={() => setPalette(true)} aria-label="Search" className="flex h-9 min-w-0 flex-1 max-w-md items-center gap-2 rounded-lg border border-line bg-surface px-3 text-left text-faint transition-colors hover:border-line-strong">
+            <span className="flex-1 truncate">Search orders, customers, people…</span><span className="kbd hidden sm:inline">⌘K</span>
+          </button>
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="hidden items-center gap-2 text-[12px] text-muted md:inline-flex" title="Prototype: all data is generated sample data"><i className="live" />Live · demo data</span>
+            <Link href="/orders/new" className="btn btn-sm btn-primary lg:hidden">New sale</Link>
           </div>
         </header>
-        <main id="main" className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">{children}</main>
+        <main id="main" className="mx-auto max-w-[1200px] px-4 py-8 sm:px-8">{children}</main>
       </div>
-      <Palette open={palette} onClose={() => setPalette(false)} groups={groups} />
+      <Palette open={palette} onClose={() => setPalette(false)} pages={items} />
     </div>
   );
 }
 
 function UserMenu({ name, role, setRole }: { name: string; role: Role; setRole: (r: Role) => void }) {
-  const [dark, setDark] = useState(false);
-  useEffect(() => setDark(document.documentElement.dataset.theme === "dark"), []);
+  const [dark, setDark] = useState(true);
+  useEffect(() => setDark(document.documentElement.dataset.theme !== "light"), []);
   const toggle = () => {
     const next = dark ? "light" : "dark";
     document.documentElement.dataset.theme = next; setDark(!dark);
@@ -128,21 +105,21 @@ function UserMenu({ name, role, setRole }: { name: string; role: Role; setRole: 
   };
   return (
     <div className="border-t border-line p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-md bg-brand-bg text-[11px] font-semibold text-brand">{name.split(" ").map((p) => p[0]).join("")}</span>
-        <div className="min-w-0"><div className="truncate font-medium leading-4">{name}</div><div className="text-[12px] leading-4 text-muted">{ROLE_LABEL[role]}</div></div>
+      <div className="mb-3 flex items-center gap-2.5">
+        <span aria-hidden="true" className="grid h-8 w-8 place-items-center rounded-full bg-brand-bg text-[11px] font-semibold text-brand">{name.split(" ").map((p) => p[0]).join("")}</span>
+        <div className="min-w-0 leading-[17px]"><div className="truncate font-medium">{name}</div><div className="text-[12px] text-muted">{ROLE_LABEL[role]}</div></div>
       </div>
-      <label htmlFor="role-switch" className="eyebrow mb-1 block">Demo role</label>
+      <label htmlFor="role-switch" className="eyebrow mb-1 block">View as</label>
       <select id="role-switch" className="input input-sm mb-2" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-        <option value="admin">Admin — Dana Whitfield</option><option value="manager">Manager — Marcus Reyes</option><option value="rep">Sales Rep — Joshua Park</option>
+        <option value="admin">Admin</option><option value="manager">Manager</option><option value="rep">Sales rep</option>
       </select>
-      <button className="btn btn-sm w-full" onClick={toggle}>{dark ? "Light theme" : "Dark theme"}</button>
+      <button className="btn btn-sm btn-ghost w-full justify-start px-1" onClick={toggle} aria-pressed={dark}>{dark ? "Switch to light" : "Switch to dark"}</button>
     </div>
   );
 }
 
-function Palette({ open, onClose, groups }: { open: boolean; onClose: () => void; groups: Group[] }) {
-  const { orders } = useStore();
+function Palette({ open, onClose, pages }: { open: boolean; onClose: () => void; pages: Item[] }) {
+  const { orders, role } = useStore();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [i, setI] = useState(0);
@@ -151,17 +128,17 @@ function Palette({ open, onClose, groups }: { open: boolean; onClose: () => void
 
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const pages = groups.flatMap((g) => g.items.map((x) => ({ key: x.href, label: x.label, hint: g.label ?? "Go to", href: x.href })));
-    const pg = pages.filter((p) => !s || p.label.toLowerCase().includes(s));
+    const acts = [{ key: "new", label: "New sale", hint: "Action", href: "/orders/new" }, ...pages.map((p) => ({ key: p.href, label: p.label, hint: "Go to", href: p.href }))];
+    const pg = acts.filter((p) => !s || p.label.toLowerCase().includes(s));
     const ord = s.length < 2 ? [] : orders.filter((o) => o.no.toLowerCase().includes(s) || o.customer.name.toLowerCase().includes(s) || o.customer.phone.includes(s) || o.customer.email.includes(s)).slice(0, 6)
       .map((o) => ({ key: o.id, label: `${o.no} · ${o.customer.name}`, hint: statusOf(o).label, href: `/orders/${o.no}` }));
-    return [...ord, ...pg].slice(0, 12);
-  }, [q, groups, orders]);
+    return [...ord, ...pg].slice(0, 10);
+  }, [q, pages, orders, role]);
 
   const go = (href: string) => { onClose(); router.push(href); };
   return (
-    <Dialog open={open} onClose={onClose} title="Command palette" className="palette">
-      <input ref={input} className="input" placeholder="Search orders, customers, pages…" aria-label="Search" value={q}
+    <Dialog open={open} onClose={onClose} title="Search" className="palette">
+      <input ref={input} className="input" placeholder="Type an order number, name or phone…" aria-label="Search" value={q}
         onChange={(e) => { setQ(e.target.value); setI(0); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); setI((v) => Math.min(v + 1, results.length - 1)); }
@@ -171,12 +148,12 @@ function Palette({ open, onClose, groups }: { open: boolean; onClose: () => void
       <ul role="listbox" aria-label="Results" className="m-0 mt-2 max-h-[320px] list-none overflow-y-auto p-0">
         {results.map((r, idx) => (
           <li key={r.key} role="option" aria-selected={idx === i}>
-            <button className={cn("flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left", idx === i && "bg-brand-bg")} onMouseEnter={() => setI(idx)} onClick={() => go(r.href)}>
+            <button className={cn("flex w-full items-center justify-between rounded-lg px-3 py-2 text-left", idx === i && "bg-brand-bg")} onMouseEnter={() => setI(idx)} onClick={() => go(r.href)}>
               <span>{r.label}</span><span className="text-[12px] text-muted">{r.hint}</span>
             </button>
           </li>
         ))}
-        {results.length === 0 && <li className="px-2.5 py-6 text-center text-muted">No results.</li>}
+        {results.length === 0 && <li className="px-3 py-6 text-center text-muted">No results.</li>}
       </ul>
     </Dialog>
   );

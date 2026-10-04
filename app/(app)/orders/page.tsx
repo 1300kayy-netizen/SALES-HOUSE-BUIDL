@@ -1,48 +1,41 @@
 "use client";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { DAY, NOW, PACKAGES, REPS, TEAMS, DEALERS, pkgById, startOfDay, userById, type Order } from "@/lib/mock";
-import { fmtDate, fmtDateTime, relTime, csvCell } from "@/lib/format";
+import { DAY, NOW, PACKAGES, REPS, pkgById, startOfDay, userById, type Order } from "@/lib/mock";
+import { csvCell, fmtDateTime, relTime } from "@/lib/format";
 import { STAGE_LABEL, OUTCOME_LABEL, allowedTransitions, isAwaitingInstall, statusOf } from "@/lib/status";
 import { can } from "@/lib/permissions";
-import { Dialog, EmptyState, Menu, MenuItem, PageHeader, Status, cn, useToast } from "@/components/ui";
+import { Dialog, EmptyState, PageHeader, Status, cn, useToast } from "@/components/ui";
 
-interface Filters { q: string; status: string; rep: string; team: string; pkg: string; market: string; dealer: string; range: string; attention: boolean; awaiting: boolean }
-const EMPTY: Filters = { q: "", status: "", rep: "", team: "", pkg: "", market: "", dealer: "", range: "", attention: false, awaiting: false };
-const PRESETS: { id: string; label: string; f: Partial<Filters> }[] = [
-  { id: "all", label: "All orders", f: {} },
-  { id: "today", label: "Today", f: { range: "today" } },
-  { id: "attn", label: "Needs attention", f: { attention: true } },
-  { id: "await", label: "Awaiting install", f: { awaiting: true } },
-  { id: "cb", label: "Chargebacks", f: { status: "chargeback" } },
+type View = "all" | "attention" | "await" | "installed" | "closed";
+const VIEWS: { id: View; label: string }[] = [
+  { id: "all", label: "All" }, { id: "attention", label: "Needs attention" }, { id: "await", label: "Awaiting install" }, { id: "installed", label: "Installed" }, { id: "closed", label: "Closed" },
 ];
-type ColKey = "no" | "submitted" | "agent" | "customer" | "address" | "pkg" | "dealer" | "status" | "install" | "manager" | "market" | "updated";
-const COLS: { key: ColKey; label: string; sortable?: boolean; def: boolean }[] = [
-  { key: "no", label: "Order ID", sortable: true, def: true }, { key: "submitted", label: "Submitted", sortable: true, def: true },
-  { key: "agent", label: "Agent", sortable: true, def: true }, { key: "customer", label: "Customer", sortable: true, def: true },
-  { key: "address", label: "Address", def: false }, { key: "pkg", label: "Package", sortable: true, def: true },
-  { key: "dealer", label: "Dealer Login", def: false }, { key: "status", label: "Status", sortable: true, def: true },
-  { key: "install", label: "Install Date", sortable: true, def: false }, { key: "manager", label: "Manager", def: false },
-  { key: "market", label: "Market", def: false }, { key: "updated", label: "Last Updated", sortable: true, def: true },
-];
-const SAVED_KEY = "salesos.savedViews";
+const PAGE = 25;
 
-function matches(o: Order, f: Filters) {
-  if (f.q) {
-    const q = f.q.toLowerCase().trim();
-    const hay = [o.no, o.customer.name, o.customer.email, o.customer.phone, o.address.line1, o.zoeyNo ?? ""].join(" ").toLowerCase();
-    if (!hay.includes(q) && !o.customer.phone.replace(/\D/g, "").includes(q.replace(/\D/g, "") || "\u0000")) return false;
+interface F { q: string; rep: string; pkg: string; range: string; status: string }
+const EMPTY: F = { q: "", rep: "", pkg: "", range: "", status: "" };
+
+function inView(o: Order, v: View) {
+  switch (v) {
+    case "attention": return !!o.attention && !o.outcome;
+    case "await": return isAwaitingInstall(o);
+    case "installed": return !o.outcome && (o.stage === "installed" || o.stage === "activated");
+    case "closed": return !!o.outcome;
+    default: return true;
   }
-  if (f.status) { const s = o.outcome ?? o.stage; if (s !== f.status) return false; }
+}
+function match(o: Order, f: F) {
+  if (f.q) {
+    const q = f.q.toLowerCase().trim(), digits = q.replace(/\D/g, "");
+    const hay = [o.no, o.customer.name, o.customer.email, o.address.line1, o.dealerLogin, o.zoeyNo ?? ""].join(" ").toLowerCase();
+    if (!hay.includes(q) && !(digits.length > 2 && o.customer.phone.replace(/\D/g, "").includes(digits))) return false;
+  }
+  if (f.status && (o.outcome ?? o.stage) !== f.status) return false;
   if (f.rep && o.repId !== f.rep) return false;
-  if (f.team && o.teamId !== f.team) return false;
   if (f.pkg && o.packageId !== f.pkg) return false;
-  if (f.market && o.market !== f.market) return false;
-  if (f.dealer && o.dealerLogin !== f.dealer) return false;
-  if (f.attention && !(o.attention && !o.outcome)) return false;
-  if (f.awaiting && !isAwaitingInstall(o)) return false;
   if (f.range) {
     const start = f.range === "today" ? startOfDay(NOW) : f.range === "7" ? startOfDay(NOW) - 6 * DAY : startOfDay(NOW) - 29 * DAY;
     if (o.submittedAt < start) return false;
@@ -51,212 +44,141 @@ function matches(o: Order, f: Filters) {
 }
 
 function OrdersInner() {
-  const { orders, role, changeStatus, logAudit, actor } = useStore();
+  const { orders, role, actor, changeStatus, logAudit } = useStore();
   const toast = useToast();
+  const router = useRouter();
   const sp = useSearchParams();
-  const [f, setF] = useState<Filters>(EMPTY);
-  const [view, setView] = useState("all");
-  const [sort, setSort] = useState<{ k: ColKey; dir: 1 | -1 }>({ k: "submitted", dir: -1 });
+  const view = (sp.get("view") as View) || "all";
+  const [f, setF] = useState<F>({ ...EMPTY, status: sp.get("status") ?? "" });
+  const [sort, setSort] = useState<{ k: "submitted" | "customer" | "status"; dir: 1 | -1 }>({ k: "submitted", dir: -1 });
   const [page, setPage] = useState(0);
-  const [size, setSize] = useState(25);
-  const [visible, setVisible] = useState<Record<string, boolean>>(() => Object.fromEntries(COLS.map((c) => [c.key, c.def && !(c.key === "agent" && role === "rep")])));
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<null | { to: string; kind: "stage" | "outcome" | "next" }>(null);
+  const [bulk, setBulk] = useState<null | "next" | "cancelled">(null);
   const [reason, setReason] = useState("");
-  const [saved, setSaved] = useState<{ id: string; label: string; f: Filters }[]>([]);
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [saveName, setSaveName] = useState("");
 
-  useEffect(() => { try { setSaved(JSON.parse(localStorage.getItem(SAVED_KEY) ?? "[]")); } catch {} }, []);
-  useEffect(() => { const s = sp.get("status"); if (s) setF({ ...EMPTY, status: s }); }, [sp]);
-  useEffect(() => { setVisible((v) => ({ ...v, agent: role !== "rep" })); }, [role]);
+  useEffect(() => { setF((x) => ({ ...x, status: sp.get("status") ?? "" })); setPage(0); setSel(new Set()); }, [sp]);
 
-  const filtered = useMemo(() => orders.filter((o) => matches(o, f)), [orders, f]);
-  const sorted = useMemo(() => {
-    const val = (o: Order): string | number => {
-      switch (sort.k) {
-        case "no": return Number(o.no.slice(4)); case "submitted": return o.submittedAt; case "agent": return userById(o.repId)?.name ?? "";
-        case "customer": return o.customer.name; case "pkg": return pkgById(o.packageId).name; case "status": return statusOf(o).label;
-        case "install": return o.installDate ?? 0; case "updated": return o.updatedAt; default: return 0;
-      }
-    };
-    return [...filtered].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
-  }, [filtered, sort]);
-  const pages = Math.max(1, Math.ceil(sorted.length / size));
+  const counts = useMemo(() => Object.fromEntries(VIEWS.map((v) => [v.id, orders.filter((o) => inView(o, v.id)).length])) as Record<View, number>, [orders]);
+  const rows = useMemo(() => {
+    const list = orders.filter((o) => inView(o, view) && match(o, f));
+    const val = (o: Order) => (sort.k === "submitted" ? o.submittedAt : sort.k === "customer" ? o.customer.name : statusOf(o).label);
+    return list.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
+  }, [orders, view, f, sort]);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const cur = Math.min(page, pages - 1);
-  const rows = sorted.slice(cur * size, cur * size + size);
-  const set = <K extends keyof Filters>(k: K, v: Filters[K]) => { setF((x) => ({ ...x, [k]: v })); setPage(0); setView(""); };
-  const applyView = (id: string, fl: Partial<Filters>) => { setF({ ...EMPTY, ...fl }); setView(id); setPage(0); setSel(new Set()); };
-  const activeFilters = (Object.keys(EMPTY) as (keyof Filters)[]).filter((k) => f[k] && f[k] !== EMPTY[k]);
-  const allOnPage = rows.length > 0 && rows.every((o) => sel.has(o.id));
+  const shown = rows.slice(cur * PAGE, cur * PAGE + PAGE);
+  const set = <K extends keyof F>(k: K, v: F[K]) => { setF((x) => ({ ...x, [k]: v })); setPage(0); };
+  const filtered = f.q || f.rep || f.pkg || f.range || f.status;
+  const pageAll = shown.length > 0 && shown.every((o) => sel.has(o.id));
   const selected = orders.filter((o) => sel.has(o.id));
-  const vis = COLS.filter((c) => visible[c.key]);
+  const setView = (v: View) => router.replace(v === "all" ? "/orders" : `/orders?view=${v}`);
+  const th = (k: typeof sort.k, label: string) => (
+    <th aria-sort={sort.k === k ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+      <button className="th-btn" onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : -1 }))}>{label}<span aria-hidden="true">{sort.k === k ? (sort.dir === 1 ? "↑" : "↓") : ""}</span></button>
+    </th>
+  );
 
   const doBulk = () => {
     if (!bulk) return;
-    let ok = 0, skip = 0;
     const groups = new Map<string, { kind: "stage" | "outcome"; ids: string[] }>();
+    let skip = 0;
     for (const o of selected) {
       const t = allowedTransitions(o, role);
-      const target = bulk.kind === "next" ? t.find((x) => x.kind === "stage" && !x.requiresReason) : t.find((x) => x.to === bulk.to);
+      const target = bulk === "next" ? t.find((x) => x.kind === "stage" && !x.requiresReason) : t.find((x) => x.to === "cancelled");
       if (!target) { skip++; continue; }
-      const g = groups.get(target.to) ?? { kind: target.kind, ids: [] }; g.ids.push(o.id); groups.set(target.to, g); ok++;
+      const g = groups.get(target.to) ?? { kind: target.kind, ids: [] }; g.ids.push(o.id); groups.set(target.to, g);
     }
-    groups.forEach((g, to) => changeStatus(g.ids, g.kind, to, reason));
-    toast(`${ok} updated${skip ? `, ${skip} skipped (transition not allowed)` : ""}`);
+    let ok = 0;
+    groups.forEach((g, to) => { changeStatus(g.ids, g.kind, to, reason.trim()); ok += g.ids.length; });
+    toast(`${ok} updated${skip ? ` · ${skip} skipped` : ""}`);
     setBulk(null); setReason(""); setSel(new Set());
   };
 
   const exportCsv = () => {
-    const head = ["Order ID", "Submitted", "Agent", "Customer", "Email", "Phone", "Address", "Package", "Dealer Login", "Status", "Market"];
-    const lines = [head.map(csvCell).join(",")].concat(sorted.map((o) => [o.no, new Date(o.submittedAt).toISOString(), userById(o.repId)?.name, o.customer.name, o.customer.email, o.customer.phone,
-      `${o.address.line1} ${o.address.unit}, ${o.address.city} ${o.address.state} ${o.address.zip}`, pkgById(o.packageId).name, o.dealerLogin, statusOf(o).label, o.market].map(csvCell).join(",")));
+    const head = ["Order", "Submitted", "Agent", "Customer", "Email", "Phone", "Address", "Package", "Dealer login", "Status"];
+    const lines = [head.join(",")].concat(rows.map((o) => [o.no, new Date(o.submittedAt).toISOString(), userById(o.repId)?.name, o.customer.name, o.customer.email, o.customer.phone,
+      `${o.address.line1} ${o.address.unit}, ${o.address.city} ${o.address.state} ${o.address.zip}`, pkgById(o.packageId).name, o.dealerLogin, statusOf(o).label].map(csvCell).join(",")));
     const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
     const a = document.createElement("a"); a.href = url; a.download = "orders-sample.csv"; a.click(); URL.revokeObjectURL(url);
-    logAudit({ actor: actor.id, action: "export.generated", entity: "orders", detail: `${sorted.length} rows, DOB excluded` });
-    toast(`Exported ${sorted.length} rows (DOB excluded)`);
+    logAudit({ actor: actor.id, action: "export.generated", entity: "orders", detail: `${rows.length} rows, DOB excluded` });
+    toast(`Exported ${rows.length} orders · DOB excluded`);
   };
-
-  const cell = (o: Order, k: ColKey) => {
-    switch (k) {
-      case "no": return <Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link>;
-      case "submitted": return <span className="text-muted">{fmtDateTime(o.submittedAt)}</span>;
-      case "agent": return userById(o.repId)?.name;
-      case "customer": return o.customer.name;
-      case "address": return `${o.address.line1}${o.address.unit ? ", " + o.address.unit : ""}, ${o.address.city}`;
-      case "pkg": return pkgById(o.packageId).name;
-      case "dealer": return <span className="mono">{o.dealerLogin}</span>;
-      case "status": return <Status o={o} />;
-      case "install": return o.installDate ? fmtDate(o.installDate) : <span className="text-faint">—</span>;
-      case "manager": return userById(o.managerId)?.name;
-      case "market": return o.market;
-      case "updated": return <span className="text-muted">{relTime(o.updatedAt)}</span>;
-    }
-  };
-  const sel_ = "input input-sm w-auto";
 
   return (
     <>
-      <PageHeader title="Orders" sub={`${sorted.length.toLocaleString()} ${sorted.length === 1 ? "order" : "orders"}${role === "rep" ? " · your sales" : role === "manager" ? " · your team" : ""}`}
+      <PageHeader title="Orders" sub={role === "rep" ? "Your sales" : role === "manager" ? "Your team’s sales" : "Every sale, in one place"}
         actions={<>
-          {can.exportData(role) && <button className="btn" onClick={exportCsv}>Export CSV</button>}
-          <Link href="/orders/new" className="btn btn-primary no-underline">Submit sale</Link>
+          {can.exportData(role) && <button className="btn" onClick={exportCsv}>Export</button>}
+          <Link href="/orders/new" className="btn btn-primary no-underline">New sale</Link>
         </>} />
 
-      <div role="tablist" aria-label="Saved views" className="mb-3 flex flex-wrap items-center gap-1 border-b border-line">
-        {[...PRESETS, ...saved].map((v) => (
-          <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => applyView(v.id, "f" in v ? v.f : {})}
-            className={cn("-mb-px h-8 border-b-2 px-3 text-[13px]", view === v.id ? "border-brand font-medium text-brand" : "border-transparent text-muted hover:text-ink")}>{v.label}</button>
-        ))}
-        {activeFilters.length > 0 && <button className="ml-auto h-8 px-2 text-[12px] text-brand" onClick={() => setSaveOpen(true)}>Save view…</button>}
+      <div role="tablist" aria-label="Order views" className="mb-4 flex flex-wrap border-b border-line">
+        {VIEWS.map((v) => (
+          <button key={v.id} role="tab" className="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}>
+            {v.label}<span className="ml-1.5 text-[12px] text-faint tabular-nums">{counts[v.id]}</span>
+          </button>))}
       </div>
 
       <div className="panel">
-        <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
+        <div className="flex flex-wrap items-center gap-2 p-3">
           <label className="sr-only" htmlFor="q">Search orders</label>
-          <input id="q" className="input input-sm w-full sm:w-64" placeholder="Search order, customer, phone, address…" value={f.q} onChange={(e) => set("q", e.target.value)} />
-          <select aria-label="Status" className={sel_} value={f.status} onChange={(e) => set("status", e.target.value)}>
-            <option value="">All statuses</option>
-            {Object.entries(STAGE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            {Object.entries(OUTCOME_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-          <select aria-label="Date range" className={sel_} value={f.range} onChange={(e) => set("range", e.target.value)}>
-            <option value="">Any date</option><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
-          </select>
-          {role !== "rep" && <select aria-label="Representative" className={sel_} value={f.rep} onChange={(e) => set("rep", e.target.value)}>
-            <option value="">All reps</option>{REPS.filter((r) => role === "admin" || r.managerId === actor.id).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>}
-          {role === "admin" && <select aria-label="Team" className={sel_} value={f.team} onChange={(e) => set("team", e.target.value)}>
-            <option value="">All teams</option>{TEAMS.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
-          <select aria-label="Package" className={sel_} value={f.pkg} onChange={(e) => set("pkg", e.target.value)}>
-            <option value="">All packages</option>{PACKAGES.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          {role === "admin" && <select aria-label="Market" className={sel_} value={f.market} onChange={(e) => set("market", e.target.value)}>
-            <option value="">All markets</option>{["Philadelphia", "Atlanta", "Houston"].map((m) => <option key={m}>{m}</option>)}</select>}
-          {role !== "rep" && <select aria-label="Dealer login" className={sel_} value={f.dealer} onChange={(e) => set("dealer", e.target.value)}>
-            <option value="">All dealer logins</option>{DEALERS.map((d) => <option key={d.id} value={d.login}>{d.login}</option>)}</select>}
-          <div className="ml-auto">
-            <Menu label="Columns">
-              {COLS.map((c) => (
-                <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-subtle">
-                  <input type="checkbox" checked={!!visible[c.key]} disabled={c.key === "no"} onChange={(e) => setVisible({ ...visible, [c.key]: e.target.checked })} />{c.label}
-                </label>))}
-            </Menu>
-          </div>
+          <input id="q" className="input input-sm w-full sm:w-80" placeholder="Search name, phone, address, order #" value={f.q} onChange={(e) => set("q", e.target.value)} />
+          {role !== "rep" && <select aria-label="Agent" className="input input-sm w-auto" value={f.rep} onChange={(e) => set("rep", e.target.value)}>
+            <option value="">All agents</option>{REPS.filter((r) => role === "admin" || r.managerId === actor.id).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>}
+          <select aria-label="Package" className="input input-sm w-auto" value={f.pkg} onChange={(e) => set("pkg", e.target.value)}>
+            <option value="">All packages</option>{PACKAGES.filter((p) => p.category === "internet").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <select aria-label="Date" className="input input-sm w-auto" value={f.range} onChange={(e) => set("range", e.target.value)}>
+            <option value="">Any date</option><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+          {f.status && <button className="btn btn-sm" onClick={() => { set("status", ""); router.replace("/orders"); }}>Status: {STAGE_LABEL[f.status as keyof typeof STAGE_LABEL] ?? OUTCOME_LABEL[f.status as keyof typeof OUTCOME_LABEL]} ×</button>}
+          {filtered ? <button className="btn btn-sm btn-ghost" onClick={() => { setF(EMPTY); router.replace("/orders"); }}>Clear</button> : null}
         </div>
 
-        {activeFilters.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            {activeFilters.map((k) => (
-              <span key={k} className="inline-flex items-center gap-1 rounded border border-line-strong px-2 py-0.5 text-[12px]">
-                <span className="text-muted">{k === "attention" ? "Needs attention" : k === "awaiting" ? "Awaiting install" : k}</span>
-                {typeof f[k] === "string" && <b className="font-medium">{String(f[k])}</b>}
-                <button aria-label={`Remove ${k} filter`} className="text-faint hover:text-ink" onClick={() => set(k, (typeof f[k] === "boolean" ? false : "") as never)}>×</button>
-              </span>))}
-            <button className="text-[12px] text-brand" onClick={() => applyView("all", {})}>Clear all</button>
-          </div>
-        )}
-
-        <div className="max-h-[calc(100vh-290px)] min-h-[200px] overflow-auto">
+        <div className="max-h-[calc(100vh-330px)] min-h-[200px] overflow-auto border-t border-line">
           <table className="tbl">
             <caption className="sr-only">Orders</caption>
             <thead><tr>
-              <th style={{ width: 36 }}><input type="checkbox" aria-label="Select all on page" checked={allOnPage} onChange={(e) => { const n = new Set(sel); rows.forEach((o) => (e.target.checked ? n.add(o.id) : n.delete(o.id))); setSel(n); }} /></th>
-              {vis.map((c) => (
-                <th key={c.key} aria-sort={sort.k === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
-                  {c.sortable ? <button className="th-btn" onClick={() => setSort((s) => ({ k: c.key, dir: s.k === c.key ? (s.dir === 1 ? -1 : 1) : -1 }))}>{c.label}<span aria-hidden="true">{sort.k === c.key ? (sort.dir === 1 ? "↑" : "↓") : ""}</span></button> : c.label}
-                </th>))}
-              <th aria-label="Actions" />
+              {can.changeStatus(role) && <th style={{ width: 40, paddingRight: 0 }}><input type="checkbox" aria-label="Select all on page" checked={pageAll} onChange={(e) => { const n = new Set(sel); shown.forEach((o) => (e.target.checked ? n.add(o.id) : n.delete(o.id))); setSel(n); }} /></th>}
+              <th>Order</th>{th("customer", "Customer")}<th>Package</th>{role !== "rep" && <th>Agent</th>}{th("status", "Status")}{th("submitted", "Submitted")}
             </tr></thead>
             <tbody>
-              {rows.map((o) => (
-                <tr key={o.id} data-selected={sel.has(o.id)}>
-                  <td><input type="checkbox" aria-label={`Select ${o.no}`} checked={sel.has(o.id)} onChange={(e) => { const n = new Set(sel); e.target.checked ? n.add(o.id) : n.delete(o.id); setSel(n); }} /></td>
-                  {vis.map((c) => <td key={c.key}>{cell(o, c.key)}</td>)}
-                  <td className="r"><Link className="text-[12px] text-brand" href={`/orders/${o.no}`}>View</Link></td>
+              {shown.map((o) => (
+                <tr key={o.id} data-selected={sel.has(o.id)} onDoubleClick={() => router.push(`/orders/${o.no}`)}>
+                  {can.changeStatus(role) && <td style={{ paddingRight: 0 }}><input type="checkbox" aria-label={`Select ${o.no}`} checked={sel.has(o.id)} onChange={(e) => { const n = new Set(sel); e.target.checked ? n.add(o.id) : n.delete(o.id); setSel(n); }} /></td>}
+                  <td><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link></td>
+                  <td>{o.customer.name}<div className="text-[12px] text-faint">{o.address.line1}, {o.address.city}</div></td>
+                  <td className="text-muted">{pkgById(o.packageId).name}</td>
+                  {role !== "rep" && <td className="text-muted">{userById(o.repId)?.name}</td>}
+                  <td><Status o={o} /></td>
+                  <td className="text-muted" title={fmtDateTime(o.submittedAt)}>{relTime(o.submittedAt)}</td>
                 </tr>))}
             </tbody>
           </table>
-          {rows.length === 0 && <EmptyState title="No orders match these filters." body="Try a different search or clear the filters." action={<button className="btn btn-sm" onClick={() => applyView("all", {})}>Clear filters</button>} />}
+          {shown.length === 0 && <EmptyState title={filtered ? "No orders match." : "No orders here yet."} body={filtered ? "Try a different search or clear the filters." : undefined}
+            action={filtered ? <button className="btn btn-sm" onClick={() => { setF(EMPTY); router.replace("/orders"); }}>Clear filters</button> : <Link href="/orders/new" className="btn btn-primary btn-sm no-underline">New sale</Link>} />}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2 text-[12px] text-muted">
-          <span>{sorted.length ? `${cur * size + 1}–${Math.min(sorted.length, cur * size + size)} of ${sorted.length.toLocaleString()}` : "0 results"}</span>
+        <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[13px] text-muted">
+          <span>{rows.length ? `${cur * PAGE + 1}–${Math.min(rows.length, cur * PAGE + PAGE)} of ${rows.length.toLocaleString()}` : "0 results"}</span>
           <div className="flex items-center gap-2">
-            <label htmlFor="ps">Rows</label>
-            <select id="ps" className="input input-sm w-auto" value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }}>{[25, 50, 100].map((n) => <option key={n}>{n}</option>)}</select>
             <button className="btn btn-sm" disabled={cur === 0} onClick={() => setPage(cur - 1)}>Previous</button>
-            <span>Page {cur + 1} / {pages}</span>
             <button className="btn btn-sm" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>Next</button>
           </div>
         </div>
       </div>
 
       {sel.size > 0 && (
-        <div role="region" aria-label="Bulk actions" className="fade fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-surface px-4 py-2" style={{ boxShadow: "var(--shadow-pop)" }}>
-          <span className="font-medium">{sel.size} selected</span>
-          {can.changeStatus(role) ? (
-            <Menu label="Update status" align="left">
-              <MenuItem onClick={() => setBulk({ to: "", kind: "next" })}>Advance to next stage</MenuItem>
-              <MenuItem onClick={() => setBulk({ to: "cancelled", kind: "outcome" })}>Mark Cancelled</MenuItem>
-              <MenuItem onClick={() => setBulk({ to: "failed", kind: "outcome" })}>Mark Failed</MenuItem>
-              <MenuItem onClick={() => setBulk({ to: "duplicate", kind: "outcome" })}>Mark Duplicate</MenuItem>
-            </Menu>) : <span className="text-muted">Bulk status updates require Manager or Admin.</span>}
+        <div role="region" aria-label="Bulk actions" className={cn("fade fixed bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-line-strong bg-surface py-2 pl-4 pr-2")} style={{ boxShadow: "var(--shadow-pop)" }}>
+          <span className="mr-2 font-medium">{sel.size} selected</span>
+          <button className="btn btn-sm btn-primary" onClick={() => setBulk("next")}>Advance to next step</button>
+          <button className="btn btn-sm" onClick={() => setBulk("cancelled")}>Cancel orders</button>
           <button className="btn btn-sm btn-ghost" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
 
-      <Dialog open={!!bulk} onClose={() => setBulk(null)} title="Confirm bulk status update"
-        footer={<><button className="btn" onClick={() => setBulk(null)}>Cancel</button><button className="btn btn-primary" onClick={doBulk} disabled={bulk?.kind === "outcome" && !reason.trim()}>Apply to {sel.size}</button></>}>
-        <p className="mt-0">{bulk?.kind === "next" ? "Move each selected order to its next lifecycle stage." : `Mark ${sel.size} orders as ${bulk?.to}.`} Orders where this transition isn’t allowed are skipped.</p>
-        <label className="label" htmlFor="bulk-reason">Reason{bulk?.kind === "outcome" ? " (required)" : " (optional)"}</label>
-        <input id="bulk-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
-      </Dialog>
-
-      <Dialog open={saveOpen} onClose={() => setSaveOpen(false)} title="Save view"
-        footer={<><button className="btn" onClick={() => setSaveOpen(false)}>Cancel</button><button className="btn btn-primary" disabled={!saveName.trim()} onClick={() => {
-          const n = [...saved, { id: "u" + Date.now(), label: saveName.trim(), f }]; setSaved(n); try { localStorage.setItem(SAVED_KEY, JSON.stringify(n)); } catch {}
-          setSaveOpen(false); setSaveName(""); toast("View saved");
-        }}>Save</button></>}>
-        <label className="label" htmlFor="vn">View name</label><input id="vn" className="input" value={saveName} onChange={(e) => setSaveName(e.target.value)} />
+      <Dialog open={!!bulk} onClose={() => setBulk(null)} title={bulk === "next" ? `Advance ${sel.size} orders?` : `Cancel ${sel.size} orders?`}
+        footer={<><button className="btn" onClick={() => setBulk(null)}>Back</button><button className={cn("btn", bulk === "next" ? "btn-primary" : "")} onClick={doBulk} disabled={bulk === "cancelled" && !reason.trim()}>{bulk === "next" ? "Advance" : "Cancel orders"}</button></>}>
+        <p className="mt-0 text-muted">{bulk === "next" ? "Each order moves one step along its normal path. Orders that can’t make this move are skipped." : "Selected orders are marked Cancelled with your reason."}</p>
+        {bulk === "cancelled" && <><label className="label" htmlFor="bulk-reason">Reason</label><input id="bulk-reason" className="input" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Required" /></>}
       </Dialog>
     </>
   );

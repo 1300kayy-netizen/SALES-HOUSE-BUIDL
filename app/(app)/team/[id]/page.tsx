@@ -12,7 +12,7 @@ import { useRange } from "@/components/range";
 export default function RepProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { allOrders, role, actor } = useStore();
-  const { range, control } = useRange("month", ["week", "month", "custom"]);
+  const { range, control } = useRange("month", ["week", "month"]);
   const rep = userById(id);
   const mine = useMemo(() => allOrders.filter((o) => o.repId === id), [allOrders, id]);
   const s = useMemo(() => statsBy(mine, range, (o) => o.repId).get(id), [mine, range, id]);
@@ -29,7 +29,7 @@ export default function RepProfile({ params }: { params: Promise<{ id: string }>
   }), [mine]);
 
   const visible = rep && (role === "admin" || (role === "manager" && rep.managerId === actor.id) || (role === "rep" && rep.id === actor.id));
-  if (!rep || !visible) return <div className="panel"><EmptyState title="Representative not found" action={<Link href="/team/representatives" className="btn btn-sm no-underline">Back</Link>} /></div>;
+  if (!rep || !visible) return <div className="panel"><EmptyState title="Representative not found" action={<Link href="/team" className="btn btn-sm no-underline">Back to team</Link>} /></div>;
   const team = TEAMS.find((t) => t.id === rep.teamId);
   const m: [string, string][] = [
     ["Submitted", String(s?.submitted ?? 0)], ["Installed", String(s?.installed ?? 0)], ["Pending", String(s?.pending ?? 0)], ["Cancelled", String(s?.cancelled ?? 0)],
@@ -37,24 +37,20 @@ export default function RepProfile({ params }: { params: Promise<{ id: string }>
   ];
   return (
     <>
-      <PageHeader title={rep.name} sub={`${rep.role === "rep" ? "Sales Representative" : rep.role} · ${team?.name} team`} actions={control} />
-      <div className="panel mb-4">
-        <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-          {[["Team", team?.name], ["Manager", userById(rep.managerId)?.name], ["Market", rep.market], ["Status", rep.status === "active" ? "Active" : "Inactive"], ["Start date", fmtDateY(rep.startDate)], ["Email", rep.email]].map(([k, v]) => (
-            <div key={k} className="min-w-0"><dt className="eyebrow">{k}</dt><dd className="m-0 truncate">{v}</dd></div>))}
-        </dl>
-      </div>
-      <div className="panel mb-4 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 [&>*]:border-b [&>*]:border-r [&>*]:border-line">
-        {m.map(([k, v]) => <div key={k} className="px-4 py-3"><div className="eyebrow">{k}</div><div className="text-[22px] font-semibold leading-7 tabular-nums">{v}</div></div>)}
+      <Link href="/team" className="text-[13px] text-muted no-underline hover:text-ink">← Team</Link>
+      <div className="mt-2" />
+      <PageHeader title={rep.name} sub={`${team?.name} team · ${rep.market} · Manager ${userById(rep.managerId)?.name} · Started ${fmtDateY(rep.startDate)}`} actions={control} />
+      <div className="panel mb-4 grid grid-cols-2 sm:grid-cols-4 [&>*]:border-b [&>*]:border-r [&>*]:border-line">
+        {m.map(([k, v]) => <div key={k} className="px-5 py-4"><div className="eyebrow">{k}</div><div className="text-[24px] font-semibold leading-8 tracking-tight tabular-nums">{v}</div></div>)}
       </div>
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         <section className="panel"><div className="panel-h"><h2>Weekly performance</h2><span className="text-[12px] text-muted">Last 8 weeks · submitted</span></div><div className="p-4"><MiniBars data={weeks} label="Sales submitted per week" /></div></section>
         <section className="panel"><div className="panel-h"><h2>Monthly performance</h2><span className="text-[12px] text-muted">Last 3 months · submitted</span></div><div className="p-4"><MiniBars data={months} label="Sales submitted per month" /></div></section>
       </div>
       <section className="panel">
-        <div className="panel-h"><h2>Order history</h2><Link className="text-[12px] text-brand" href="/orders">All orders</Link></div>
-        <div className="overflow-x-auto"><table className="tbl"><thead><tr><th>Order</th><th>Submitted</th><th>Customer</th><th>Package</th><th>Status</th></tr></thead>
-          <tbody>{mine.slice(0, 15).map((o) => <tr key={o.id}><td><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link></td><td className="text-muted">{fmtDateTime(o.submittedAt)}</td><td>{o.customer.name}</td><td>{pkgById(o.packageId).name}</td><td><Status o={o} /></td></tr>)}</tbody></table></div>
+        <div className="panel-h"><h2>Order history</h2><Link className="text-[12px] text-brand no-underline" href="/orders">All orders</Link></div>
+        <div className="overflow-x-auto"><table className="tbl"><thead><tr><th>Order</th><th>Customer</th><th>Package</th><th>Status</th><th>Submitted</th></tr></thead>
+          <tbody>{mine.slice(0, 15).map((o) => <tr key={o.id}><td><Link className="rowlink mono" href={`/orders/${o.no}`}>{o.no}</Link></td><td>{o.customer.name}</td><td className="text-muted">{pkgById(o.packageId).name}</td><td><Status o={o} /></td><td className="text-muted">{fmtDateTime(o.submittedAt)}</td></tr>)}</tbody></table></div>
       </section>
     </>
   );

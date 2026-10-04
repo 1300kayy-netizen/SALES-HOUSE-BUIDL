@@ -120,16 +120,16 @@ export default function SubmitSale() {
 
   if (done) {
     return (
-      <div className="mx-auto max-w-xl pt-10">
-        <div className="panel p-6" role="status">
-          <div className="eyebrow mb-2" style={{ color: "var(--ok)" }}>Submitted</div>
-          <h1 className="m-0 text-xl font-semibold tracking-tight">Order {done.no} submitted successfully</h1>
+      <div className="mx-auto max-w-xl pt-8">
+        <div className="panel p-7" role="status">
+          <div className="mb-3 grid h-10 w-10 place-items-center rounded-full text-[18px]" style={{ background: "var(--ok-bg)", color: "var(--ok)" }} aria-hidden="true">✓</div>
+          <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em]">Order {done.no} submitted successfully</h1>
           <p className="mb-0 mt-1 text-muted">{done.customer.name} · {PACKAGES.find((p) => p.id === done.packageId)?.name}. Status: {statusOf(done).label}. Management can see it now.{done.attention ? " It was flagged for manager review as a possible duplicate." : ""}</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href={`/orders/${done.no}`} className="btn btn-primary no-underline">View order</Link>
             <button className="btn" onClick={another}>Submit another</button>
           </div>
-          <p className="mb-0 mt-4 text-[12px] text-faint">Prototype: the order is held in memory for this session only.</p>
+          
         </div>
       </div>
     );
@@ -145,8 +145,8 @@ export default function SubmitSale() {
 
   return (
     <form onSubmit={submit} noValidate className="mx-auto max-w-4xl pb-20">
-      <PageHeader title="Submit sale" sub="Enter the order immediately after processing it in Zoey."
-        actions={<><button type="button" className="btn btn-sm" onClick={() => sample(false)}>Fill sample</button><button type="button" className="btn btn-sm" onClick={() => sample(true)}>Fill duplicate sample</button></>} />
+      <PageHeader title="New sale" sub="Takes about a minute. Enter it right after processing in Zoey."
+        actions={<><button type="button" className="btn btn-sm btn-ghost" onClick={() => sample(false)}>Demo: fill sample</button><button type="button" className="btn btn-sm btn-ghost" onClick={() => sample(true)}>Demo: duplicate</button></>} />
       {restored && <p className="mb-4 rounded-md border border-line bg-subtle px-3 py-2 text-[12px]" role="status">Draft restored from this device. Date of birth is never saved in drafts. <button type="button" className="text-brand" onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setF(blank(actor.id, myDealer)); setRestored(false); }}>Discard draft</button></p>}
 
       <div className="panel">
@@ -215,18 +215,18 @@ export default function SubmitSale() {
           </div>
         </fieldset>
 
-        <fieldset className="sep m-0 border-x-0 border-b-0 p-5">
-          <legend className="eyebrow float-left mb-3 w-full">Order</legend>
-          <div className="clear-both grid gap-4 md:grid-cols-2">
-            <Field label="Zoey order number (optional)" htmlFor="zoey"><input id="zoey" className="input mono" value={f.zoey} onChange={(e) => set("zoey", e.target.value.toUpperCase())} /></Field>
+        <details className="sep group">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><span className="eyebrow">Optional · Zoey number &amp; notes</span><span aria-hidden="true" className="text-faint transition-transform group-open:rotate-90">›</span></summary>
+          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2">
+            <Field label="Zoey order number" htmlFor="zoey"><input id="zoey" className="input mono" value={f.zoey} onChange={(e) => set("zoey", e.target.value.toUpperCase())} /></Field>
             <div className="md:col-span-2"><Field label="Notes" htmlFor="notes"><textarea id="notes" className="input" rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Field></div>
           </div>
-        </fieldset>
+        </details>
       </div>
 
       {matches.length > 0 && (
         <section className="panel mt-4" aria-labelledby="dup-h" role="alert" style={{ borderColor: "var(--warn)" }}>
-          <div className="panel-h" style={{ background: "var(--warn-bg)" }}><h2 id="dup-h">Potential duplicate detected</h2><span className="text-[12px] text-muted">{strong ? "Likely duplicate" : "Weak match"}</span></div>
+          <div className="panel-h rounded-t-xl" style={{ background: "var(--warn-bg)", paddingBottom: 14 }}><h2 id="dup-h">Potential duplicate detected</h2><span className="text-[12px] text-muted">{strong ? "Likely duplicate" : "Weak match"}</span></div>
           <table className="tbl"><thead><tr><th>Order</th><th>Customer</th><th>Matched on</th><th>Status</th></tr></thead>
             <tbody>{matches.map(({ o, why: w }) => (
               <tr key={o.id}><td className="mono">{o.no}</td><td>{role === "rep" && o.repId !== actor.id ? <span className="text-faint">Another rep’s customer</span> : o.customer.name}</td><td>{w.join(", ")}</td><td>{statusOf(o).label}</td></tr>))}</tbody></table>
@@ -239,10 +239,10 @@ export default function SubmitSale() {
         </section>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface px-4 py-3 lg:left-[232px]">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur lg:left-[216px]">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
-          <span className="hidden text-[12px] text-muted sm:inline">{Object.keys(errors).length && submitted ? `${Object.keys(errors).length} field(s) need attention` : "Draft saved on this device"} · <span className="kbd">Tab</span> to move</span>
-          <button type="submit" className="btn btn-primary btn-lg w-full sm:w-auto">Submit order</button>
+          <span className="hidden text-[13px] text-muted sm:inline">{Object.keys(errors).length && submitted ? `${Object.keys(errors).length} field(s) need attention` : "Draft saved on this device"}</span>
+          <button type="submit" className="btn btn-primary btn-lg w-full sm:w-auto">Submit sale</button>
         </div>
       </div>
     </form>

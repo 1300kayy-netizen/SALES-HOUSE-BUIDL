@@ -2,20 +2,18 @@
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { pkgById, userById, PACKAGES, type Order } from "@/lib/mock";
+import { pkgById, userById, PACKAGES } from "@/lib/mock";
 import { fmtDate, fmtDateTime, fmtMoney, formatPhone, relTime } from "@/lib/format";
-import { STAGE_LABEL, OUTCOME_LABEL, allowedTransitions, statusOf } from "@/lib/status";
+import { STAGE_LABEL, OUTCOME_LABEL, allowedTransitions, type Transition } from "@/lib/status";
 import { can, canSee } from "@/lib/permissions";
 import { CopyButton, Dialog, EmptyState, Menu, MenuItem, Status, useToast } from "@/components/ui";
 
-const who = (id: string) => userById(id)?.name ?? id;
-const DOB_VISIBLE_MS = 30_000;
-const CUTOFF = 30 * 60_000;
+const who = (id: string) => (id === "System" ? "System" : userById(id)?.name ?? id);
 
-function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-b border-line py-5 first:pt-0 last:border-0">
-      <div className="mb-2 flex items-center justify-between"><h2 className="eyebrow m-0">{title}</h2>{action}</div>
+    <section className="panel p-5">
+      <h2 className="eyebrow m-0 mb-1">{title}</h2>
       {children}
     </section>
   );
@@ -23,209 +21,155 @@ function Section({ title, children, action }: { title: string; children: React.R
 
 export default function OrderDetail({ params }: { params: Promise<{ orderNo: string }> }) {
   const { orderNo } = use(params);
-  const { allOrders, role, actor, changeStatus, addNote, logAudit, audit, updateCustomer, now } = useStore();
+  const { allOrders, role, actor, changeStatus, addNote, logAudit, audit, updateCustomer } = useStore();
   const toast = useToast();
   const order = allOrders.find((o) => o.no === orderNo);
 
   const [revealOpen, setRevealOpen] = useState(false);
-  const [reveal, setReveal] = useState("");
-  const [shownDob, setShownDob] = useState<string | null>(null);
-  const [statusOpen, setStatusOpen] = useState(false);
-  const [pick, setPick] = useState("");
+  const [why, setWhy] = useState("");
+  const [dob, setDob] = useState<string | null>(null);
+  const [pending, setPending] = useState<Transition | null>(null);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [editOpen, setEditOpen] = useState(false);
-  const [draft, setDraft] = useState({ phone: "", email: "", name: "", line1: "", reason: "" });
+  const [draft, setDraft] = useState({ phone: "", email: "" });
 
-  useEffect(() => { if (shownDob == null) return; const t = setTimeout(() => setShownDob(null), DOB_VISIBLE_MS); return () => clearTimeout(t); }, [shownDob]);
-  useEffect(() => { setShownDob(null); }, [role, orderNo]);
+  useEffect(() => { if (dob == null) return; const t = setTimeout(() => setDob(null), 30_000); return () => clearTimeout(t); }, [dob]);
+  useEffect(() => setDob(null), [role, orderNo]);
 
   const transitions = useMemo(() => (order ? allowedTransitions(order, role) : []), [order, role]);
   if (!order || !canSee(actor, order)) {
     return <div className="panel"><EmptyState title="Order not found" body="It may not exist, or you don’t have access to it." action={<Link href="/orders" className="btn btn-sm no-underline">Back to orders</Link>} /></div>;
   }
-  const o: Order = order;
-  const rep = userById(o.repId), mgr = userById(o.managerId);
-  const items = [{ pkg: pkgById(o.packageId), qty: 1 }, ...o.extras.map((e) => ({ pkg: PACKAGES.find((p) => p.id === e)!, qty: 1 }))];
-  const withinCutoff = now - o.submittedAt < CUTOFF;
-  const canEdit = role !== "rep" || withinCutoff;
-  const chosen = transitions.find((t) => t.to === pick);
+  const o = order;
+  const next = transitions.find((t) => t.kind === "stage" && !t.requiresReason);
+  const others = transitions.filter((t) => t !== next);
+  const items = [pkgById(o.packageId), ...o.extras.map((e) => PACKAGES.find((p) => p.id === e)!)];
+  const addr = `${o.address.line1}${o.address.unit ? ", " + o.address.unit : ""}, ${o.address.city}, ${o.address.state} ${o.address.zip}`;
 
-  const log = [
-    ...o.history.map((h) => ({ at: h.at, text: h.kind === "attention" ? `Flagged: ${h.reason}` : h.from === null && h.kind === "stage" ? "Order submitted" : h.kind === "stage" ? `Status ${STAGE_LABEL[h.from as keyof typeof STAGE_LABEL] ?? h.from} → ${STAGE_LABEL[h.to as keyof typeof STAGE_LABEL] ?? h.to}` : h.to ? `Marked ${OUTCOME_LABEL[h.to as keyof typeof OUTCOME_LABEL]}` : "Reopened", by: h.actor === "System" ? "System" : who(h.actor), reason: h.reason })),
-    ...audit.filter((a) => a.entity === o.id || a.entity === o.no).map((a) => ({ at: a.at, text: `${a.action.replace(".", " · ").replace(/_/g, " ")} — ${a.detail}`, by: who(a.actor), reason: undefined as string | undefined })),
+  const apply = (t: Transition, why?: string) => {
+    changeStatus([o.id], t.to === "reopen" ? "reopen" : t.kind, t.to, why ?? "");
+    toast(`${o.no}: ${t.to === "reopen" ? "reopened" : t.label.replace(/^(Move to|Back to|Mark) /, "")}`);
+  };
+
+  const events = [
+    ...o.history.map((h) => ({ at: h.at, title: h.kind === "attention" ? "Flagged for attention" : h.kind === "stage" ? (h.from === null ? "Submitted" : STAGE_LABEL[h.to as keyof typeof STAGE_LABEL]) : h.to ? OUTCOME_LABEL[h.to as keyof typeof OUTCOME_LABEL] : "Reopened", by: who(h.actor), sub: h.reason, dot: h.kind === "outcome" && h.to ? "var(--bad)" : h.kind === "attention" ? "var(--warn)" : "var(--brand-solid)" })),
+    ...o.notes.map((n) => ({ at: n.at, title: "Note", by: who(n.author), sub: n.body, dot: "var(--faint)" })),
+    ...audit.filter((a) => (a.entity === o.id || a.entity === o.no) && a.action !== "order.status_changed" && a.action !== "order.note_added").map((a) => ({ at: a.at, title: a.action === "order.dob_revealed" ? "DOB revealed" : a.action === "order.edited" ? "Contact edited" : a.action.replace(/^order\./, "").replace(/_/g, " "), by: who(a.actor), sub: a.detail, dot: "var(--faint)" })),
   ].sort((a, b) => b.at - a.at);
 
   return (
     <>
-      <div className="sticky top-12 z-10 -mx-4 -mt-6 mb-5 border-b border-line bg-surface px-4 py-3 sm:-mx-6 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="m-0 font-mono text-[18px] font-semibold tracking-tight">{o.no}</h1><Status o={o} />
-              {o.duplicateOf.length > 0 && <span className="flag">Possible duplicate of {o.duplicateOf[0]}</span>}
-            </div>
-            <div className="mt-0.5 text-[15px] font-medium">{o.customer.name}</div>
-            <div className="text-[12px] text-muted">Submitted by {rep?.name} · {fmtDateTime(o.submittedAt)}</div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <Link href="/orders" className="text-[13px] text-muted no-underline hover:text-ink">← Orders</Link>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="m-0 text-[26px] font-semibold leading-8 tracking-[-0.03em]">{o.customer.name}</h1>
+            <Status o={o} />
           </div>
-          <div className="flex items-center gap-2">
-            <button className="btn" onClick={() => { setDraft({ phone: o.customer.phone, email: o.customer.email, name: o.customer.name, line1: o.address.line1, reason: "" }); setEditOpen(true); }}>Edit</button>
-            <button className="btn btn-primary" disabled={!can.changeStatus(role) || transitions.length === 0} onClick={() => { setPick(transitions[0]?.to ?? ""); setReason(""); setStatusOpen(true); }}
-              title={can.changeStatus(role) ? undefined : "Sales reps can’t change status"}>Update status</button>
-            <Menu label="More">
-              <MenuItem onClick={() => { navigator.clipboard?.writeText(location.href); toast("Link copied"); }}>Copy link</MenuItem>
-              <MenuItem onClick={() => toast("Archiving is wired up in Phase 4", "err")} danger>Archive order…</MenuItem>
-            </Menu>
-          </div>
+          <div className="mt-1 text-muted"><span className="mono">{o.no}</span> · {who(o.repId)} · {fmtDateTime(o.submittedAt)}</div>
+          {o.duplicateOf.length > 0 && <div className="mt-2"><span className="flag">Possible duplicate of {o.duplicateOf[0]}</span></div>}
+        </div>
+        <div className="flex items-center gap-2">
+          {next && <button className="btn btn-primary" onClick={() => apply(next)}>{next.label} →</button>}
+          <Menu label="More">
+            <MenuItem onClick={() => { setDraft({ phone: o.customer.phone, email: o.customer.email }); setEditOpen(true); }}>Edit contact details</MenuItem>
+            {can.changeStatus(role) && others.map((t) => <MenuItem key={t.to} danger={t.kind === "outcome" && t.to !== "reopen"} onClick={() => { setReason(""); setPending(t); }}>{t.label}</MenuItem>)}
+            {role === "admin" && <MenuItem danger onClick={() => toast("Archiving arrives in Phase 4", "err")}>Archive order</MenuItem>}
+          </Menu>
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-        <div>
-          <Section title="Customer information">
+      {o.attention && !o.outcome && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3" style={{ borderColor: "var(--warn)", background: "var(--warn-bg)" }}>
+          <span><b className="text-warn">Needs attention.</b> {o.attention}</span>
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-4">
+          <Block title="Customer">
             <dl className="dl m-0">
-              <dt>Name</dt><dd>{o.customer.name}</dd>
               <dt>Email</dt><dd>{o.customer.email} <CopyButton value={o.customer.email} label="Email" /></dd>
               <dt>Phone</dt><dd>{o.customer.phone} <CopyButton value={o.customer.phone} label="Phone" /></dd>
+              <dt>Address</dt><dd>{addr} <CopyButton value={addr} label="Address" /></dd>
               <dt>Date of birth</dt>
               <dd className="flex flex-wrap items-center gap-2">
-                <span className="mono" aria-live="polite">{shownDob ?? `••/••/${o.customer.dobYear}`}</span>
-                {can.revealDob(role) ? (shownDob
-                  ? <button className="text-[12px] text-brand" onClick={() => setShownDob(null)}>Hide</button>
-                  : <button className="text-[12px] text-brand" onClick={() => { setReveal(""); setRevealOpen(true); }}>Reveal</button>)
-                  : <span className="text-[12px] text-faint">Restricted for your role</span>}
-                {shownDob && <span className="text-[12px] text-muted">Re-masks in 30 s · access logged</span>}
+                <span className="mono" aria-live="polite">{dob ?? `••/••/${o.customer.dobYear}`}</span>
+                {can.revealDob(role) ? (dob ? <button className="text-[13px] text-brand" onClick={() => setDob(null)}>Hide</button> : <button className="text-[13px] text-brand" onClick={() => { setWhy(""); setRevealOpen(true); }}>Reveal</button>)
+                  : <span className="text-[12px] text-faint">Hidden for your role</span>}
+                {dob && <span className="text-[12px] text-muted">Re-hides in 30s · logged</span>}
               </dd>
             </dl>
-          </Section>
+          </Block>
 
-          <Section title="Service address">
-            <p className="m-0">{o.address.line1}{o.address.unit ? `, ${o.address.unit}` : ""}<br />{o.address.city}, {o.address.state} {o.address.zip}{" "}
-              <CopyButton value={`${o.address.line1}${o.address.unit ? ", " + o.address.unit : ""}, ${o.address.city}, ${o.address.state} ${o.address.zip}`} label="Address" /></p>
-          </Section>
-
-          <Section title="Products sold">
-            <table className="tbl"><thead><tr><th>Product</th><th>Category</th><th className="r">Price at sale</th><th className="r">Qty</th></tr></thead>
-              <tbody>{items.map(({ pkg, qty }) => <tr key={pkg.id}><td>{pkg.name}</td><td className="capitalize text-muted">{pkg.category}</td><td className="r">{fmtMoney(pkg.price)}/mo</td><td className="r">{qty}</td></tr>)}</tbody></table>
-            <p className="mb-0 mt-2 text-[12px] text-muted">Package name and price are snapshotted at submission; later catalog changes don’t alter this order.</p>
-          </Section>
-
-          <Section title="Dealer / submission">
-            <dl className="dl m-0">
+          <Block title="Sale">
+            <table className="tbl mt-1"><tbody>{items.map((p) => <tr key={p.id}><td style={{ paddingLeft: 0 }}>{p.name}<div className="text-[12px] capitalize text-faint">{p.category}</div></td><td className="r" style={{ paddingRight: 0 }}>{fmtMoney(p.price)}/mo</td></tr>)}</tbody></table>
+            <dl className="dl m-0 mt-2">
               <dt>Dealer login</dt><dd className="mono">{o.dealerLogin}</dd>
-              <dt>Source</dt><dd className="capitalize">{o.source}</dd>
-              <dt>Zoey order no.</dt><dd>{o.zoeyNo ? <span className="mono">{o.zoeyNo}</span> : <span className="text-faint">Not provided</span>}</dd>
-              <dt>Submitted</dt><dd>{fmtDateTime(o.submittedAt)}</dd>
-            </dl>
-          </Section>
-
-          <Section title="Installation / activation">
-            <dl className="dl m-0">
+              <dt>Zoey order</dt><dd>{o.zoeyNo ? <span className="mono">{o.zoeyNo}</span> : <span className="text-faint">Not provided</span>}</dd>
               <dt>Install date</dt><dd>{o.installDate ? fmtDate(o.installDate) : <span className="text-faint">Not scheduled</span>}</dd>
-              <dt>Installed</dt><dd>{o.installedAt ? fmtDateTime(o.installedAt) : <span className="text-faint">—</span>}</dd>
-              <dt>Activated</dt><dd>{o.activatedAt ? fmtDateTime(o.activatedAt) : <span className="text-faint">—</span>}</dd>
-              <dt>Account number</dt><dd className="text-faint">—</dd>
+              <dt>Team</dt><dd>{o.market} · {who(o.managerId)}</dd>
             </dl>
-          </Section>
+            <p className="mb-0 mt-3 text-[12px] text-faint">Package and price are saved as sold; later catalog changes never alter this order.</p>
+          </Block>
 
-          <Section title="Internal notes">
-            {o.notes.length === 0 && <p className="m-0 mb-3 text-muted">No notes yet.</p>}
-            {o.notes.map((n, i) => <div key={i} className="mb-3"><div className="text-[12px] text-muted">{who(n.author)} · {fmtDateTime(n.at)}</div><div>{n.body}</div></div>)}
-            <form onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; addNote(o.id, note.trim()); setNote(""); toast("Note added"); }} className="flex gap-2">
-              <label htmlFor="note" className="sr-only">Add internal note</label>
-              <input id="note" className="input" placeholder="Add an internal note…" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Block title="Notes">
+            <form onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; addNote(o.id, note.trim()); setNote(""); toast("Note added"); }} className="mt-2 flex gap-2">
+              <label htmlFor="note" className="sr-only">Add a note</label>
+              <input id="note" className="input" placeholder="Add a note for your team…" value={note} onChange={(e) => setNote(e.target.value)} />
               <button className="btn" type="submit" disabled={!note.trim()}>Add</button>
             </form>
-          </Section>
-
-          <Section title="Documents"><p className="m-0 text-muted">Document and screenshot uploads arrive in V1.1.</p></Section>
-          <Section title="Commission"><p className="m-0 text-muted">Commission module not enabled. Amounts will be derived from effective-dated rules, never stored on the order.</p></Section>
+            {o.notes.length > 0 && <ul className="m-0 mt-3 list-none p-0">{o.notes.slice().reverse().map((n, i) => <li key={i} className="border-t border-line py-2"><div className="text-[12px] text-muted">{who(n.author)} · {relTime(n.at)}</div>{n.body}</li>)}</ul>}
+          </Block>
         </div>
 
-        <aside className="space-y-6" aria-label="Order metadata and history">
-          <div className="panel">
-            <div className="panel-h"><h2>Details</h2></div>
-            <dl className="dl m-0 px-4 py-1" style={{ gridTemplateColumns: "100px 1fr" }}>
-              <dt>Agent</dt><dd><Link href={role === "rep" ? "#" : `/team/representatives/${o.repId}`} className="rowlink">{rep?.name}</Link></dd>
-              <dt>Manager</dt><dd>{mgr?.name}</dd><dt>Market</dt><dd>{o.market}</dd>
-              <dt>Created</dt><dd>{fmtDateTime(o.submittedAt)}</dd><dt>Updated</dt><dd>{relTime(o.updatedAt)}</dd>
-            </dl>
-            {o.attention && !o.outcome && <div className="border-t border-line px-4 py-2 text-[12px]"><span className="flag">Needs attention</span> <span className="text-muted">{o.attention}</span></div>}
-          </div>
-
-          <div className="panel">
-            <div className="panel-h"><h2>Status timeline</h2><span className="text-[12px] text-muted">Immutable</span></div>
-            <ol className="m-0 list-none p-4">
-              {[...o.history].filter((h) => h.kind !== "attention").reverse().map((h, i, arr) => {
-                const label = h.kind === "stage" ? STAGE_LABEL[h.to as keyof typeof STAGE_LABEL] : h.to ? OUTCOME_LABEL[h.to as keyof typeof OUTCOME_LABEL] : "Reopened";
-                return (
-                  <li key={i} className="relative pb-4 pl-5 last:pb-0">
-                    {i < arr.length - 1 && <span className="absolute bottom-0 left-[3px] top-3 w-px bg-line" />}
-                    <span className="absolute left-0 top-1.5 h-[7px] w-[7px] rounded-full" style={{ background: i === 0 ? "var(--brand)" : "var(--border-strong)" }} />
-                    <div className="font-medium">{label}</div>
-                    <div className="text-[12px] text-muted">{fmtDateTime(h.at)} · {h.actor === "System" ? "System" : who(h.actor)}</div>
-                    {h.reason && <div className="text-[12px]">“{h.reason}”</div>}
-                  </li>);
-              })}
-            </ol>
-          </div>
-
-          <div className="panel">
-            <div className="panel-h"><h2>Activity log</h2></div>
-            <ul className="m-0 max-h-[320px] list-none overflow-auto p-0">
-              {log.map((l, i) => (
-                <li key={i} className="border-b border-line px-4 py-2 text-[12px] last:border-0">
-                  <div>{l.text}{l.reason ? ` — “${l.reason}”` : ""}</div><div className="text-muted">{l.by} · {fmtDateTime(l.at)}</div>
+        <aside aria-label="History">
+          <section className="panel p-5 lg:sticky lg:top-20">
+            <h2 className="eyebrow m-0 mb-4">History</h2>
+            <ol className="m-0 max-h-[60vh] list-none overflow-y-auto p-0">
+              {events.map((e, i) => (
+                <li key={i} className="relative pb-4 pl-5 last:pb-0">
+                  {i < events.length - 1 && <span className="absolute bottom-0 left-[3px] top-3 w-px bg-line" />}
+                  <span className="absolute left-0 top-[7px] h-[7px] w-[7px] rounded-full" style={{ background: i === 0 ? "var(--brand-solid)" : e.dot, opacity: i === 0 ? 1 : 0.8 }} />
+                  <div className="font-medium leading-5">{e.title}</div>
+                  <div className="text-[12px] text-muted">{e.by} · {fmtDateTime(e.at)}</div>
+                  {e.sub && <div className="mt-0.5 text-[13px] text-muted">{e.sub}</div>}
                 </li>))}
-            </ul>
-          </div>
+            </ol>
+          </section>
         </aside>
       </div>
 
       <Dialog open={revealOpen} onClose={() => setRevealOpen(false)} title="Reveal date of birth"
         footer={<><button className="btn" onClick={() => setRevealOpen(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={reveal.trim().length < 3} onClick={() => {
-            setRevealOpen(false); setShownDob(o.customer.dob);
-            logAudit({ actor: actor.id, action: "order.dob_revealed", entity: o.id, detail: `Reason: ${reveal.trim()}` }); toast("DOB revealed · access logged");
-          }}>Reveal and log</button></>}>
-        <p className="mt-0 text-muted">This action is recorded in the audit log with your name, the time and your reason.</p>
-        <label className="label" htmlFor="rv">Reason (required)</label>
-        <input id="rv" className="input" value={reveal} onChange={(e) => setReveal(e.target.value)} placeholder="e.g. Verifying identity with Xfinity" />
+          <button className="btn btn-primary" disabled={why.trim().length < 3} onClick={() => { setRevealOpen(false); setDob(o.customer.dob); logAudit({ actor: actor.id, action: "order.dob_revealed", entity: o.id, detail: `Reason: ${why.trim()}` }); toast("DOB revealed · access logged"); }}>Reveal</button></>}>
+        <p className="mt-0 text-muted">This is logged with your name, the time and your reason.</p>
+        <label className="label" htmlFor="rv">Reason</label>
+        <input id="rv" className="input" autoFocus value={why} onChange={(e) => setWhy(e.target.value)} placeholder="e.g. Verifying identity with Xfinity" />
       </Dialog>
 
-      <Dialog open={statusOpen} onClose={() => setStatusOpen(false)} title={`Update status · ${o.no}`}
-        footer={<><button className="btn" onClick={() => setStatusOpen(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={!chosen || (chosen.requiresReason && !reason.trim())} onClick={() => {
-            if (!chosen) return;
-            changeStatus([o.id], chosen.to === "reopen" ? "reopen" : chosen.kind, chosen.to, reason.trim()); setStatusOpen(false); toast(`${o.no} → ${chosen.to === "reopen" ? "Reopened" : chosen.label.replace(/^(Move to|Back to|Mark) /, "")}`);
-          }}>Apply</button></>}>
-        <p className="mt-0 text-muted">Current status: <b className="text-ink">{statusOf(o).label}</b>. Only transitions allowed by the status rules are shown.</p>
-        <label className="label" htmlFor="st">New status</label>
-        <select id="st" className="input" value={pick} onChange={(e) => setPick(e.target.value)}>{transitions.map((t) => <option key={t.to} value={t.to}>{t.label}</option>)}</select>
-        <label className="label mt-3" htmlFor="sr">Reason{chosen?.requiresReason ? " (required)" : " (optional)"}</label>
-        <input id="sr" className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <Dialog open={!!pending} onClose={() => setPending(null)} title={pending?.label ?? ""}
+        footer={<><button className="btn" onClick={() => setPending(null)}>Back</button>
+          <button className="btn btn-primary" disabled={!!pending?.requiresReason && !reason.trim()} onClick={() => { if (pending) apply(pending, reason.trim()); setPending(null); }}>Confirm</button></>}>
+        <label className="label" htmlFor="sr">Reason</label>
+        <input id="sr" className="input" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Required — saved in the history" />
       </Dialog>
 
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} title={`Edit ${o.no}`}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Edit contact details"
         footer={<><button className="btn" onClick={() => setEditOpen(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canEdit} onClick={() => {
-            const patch: Parameters<typeof updateCustomer>[1] = {};
+          <button className="btn btn-primary" onClick={() => {
+            const patch: { phone?: string; email?: string } = {};
             if (draft.phone !== o.customer.phone) patch.phone = draft.phone;
             if (draft.email !== o.customer.email) patch.email = draft.email;
-            if (role !== "rep" && draft.name !== o.customer.name) patch.name = draft.name;
-            if (role !== "rep" && draft.line1 !== o.address.line1) patch.line1 = draft.line1;
-            if (Object.keys(patch).length === 0) { setEditOpen(false); return; }
-            if ((patch.name || patch.line1) && !draft.reason.trim()) { toast("A reason is required to change protected fields", "err"); return; }
-            updateCustomer(o.id, patch, draft.reason.trim()); setEditOpen(false); toast("Order updated · change logged");
-          }}>Save changes</button></>}>
-        {!canEdit && <p className="mt-0 rounded border border-line bg-subtle p-2 text-[12px]">The edit window for sales reps (30 minutes after submission) has closed. Ask your manager to make changes.</p>}
+            if (Object.keys(patch).length) { updateCustomer(o.id, patch, ""); toast("Saved · change logged"); }
+            setEditOpen(false);
+          }}>Save</button></>}>
         <div className="grid gap-3">
-          <div><label className="label" htmlFor="e-phone">Phone</label><input id="e-phone" className="input" disabled={!canEdit} value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: formatPhone(e.target.value) })} /></div>
-          <div><label className="label" htmlFor="e-email">Email</label><input id="e-email" type="email" className="input" disabled={!canEdit} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></div>
-          <div><label className="label" htmlFor="e-name">Customer name <span className="font-normal text-faint">· protected</span></label><input id="e-name" className="input" disabled={role === "rep"} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
-          <div><label className="label" htmlFor="e-addr">Service address <span className="font-normal text-faint">· protected</span></label><input id="e-addr" className="input" disabled={role === "rep"} value={draft.line1} onChange={(e) => setDraft({ ...draft, line1: e.target.value })} /></div>
-          {role !== "rep" && <div><label className="label" htmlFor="e-why">Reason for protected-field change</label><input id="e-why" className="input" value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} /></div>}
+          <div><label className="label" htmlFor="e-phone">Phone</label><input id="e-phone" className="input" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: formatPhone(e.target.value) })} /></div>
+          <div><label className="label" htmlFor="e-email">Email</label><input id="e-email" type="email" className="input" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></div>
         </div>
+        <p className="mb-0 mt-3 text-[12px] text-faint">Name, address and package are locked after submission. Ask an admin to change them.</p>
       </Dialog>
     </>
   );

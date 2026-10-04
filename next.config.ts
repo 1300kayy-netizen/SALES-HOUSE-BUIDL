@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
   async rewrites() {
-    return [{ source: "/progress", destination: "/progress/index.html" }, { source: "/progress/", destination: "/progress/index.html" }];
+    return [{ source: "/favicon.ico", destination: "/icon.svg" }, { source: "/progress", destination: "/progress/index.html" }, { source: "/progress/", destination: "/progress/index.html" }];
   },
   async headers() {
     return [

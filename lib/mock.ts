@@ -182,7 +182,7 @@ function buildOrders(): Order[] {
             cur = o.installDate;
             if (r() < 0.9) {
               o.history.push({ at: cur, kind: "stage", from: "scheduled", to: "installed", actor: ACTORS_SYS }); o.stage = "installed"; o.installedAt = cur;
-              if (r() < 0.82) { step("activated", 4 + r() * 20, ACTORS_SYS); if (stageNow() === "activated") o.activatedAt = cur; }
+              if (r() < 0.96) { step("activated", 4 + r() * 20, ACTORS_SYS); if (stageNow() === "activated") o.activatedAt = cur; }
             }
           }
         }
@@ -200,7 +200,13 @@ function buildOrders(): Order[] {
       const at = Math.min(NOW - HOUR, cur + (5 + r() * 12) * DAY);
       o.outcome = "chargeback"; o.history.push({ at, kind: "outcome", from: null, to: "chargeback", actor: "System", reason: "Account disconnected inside chargeback window" }); cur = at;
     }
-    if (!o.outcome && stageNow() !== "installed" && stageNow() !== "activated" && (r() < 0.07 || (ageDays > 6 && stageNow() === "pending"))) {
+    if (!o.outcome && ageDays > 9 && stageNow() !== "installed" && stageNow() !== "activated") {
+      const at = Math.min(NOW - 2 * DAY, cur + (2 + r() * 5) * DAY);
+      const f2 = r() < 0.6 ? "cancelled" : "failed";
+      o.outcome = f2 as Outcome;
+      o.history.push({ at, kind: "outcome", from: null, to: f2, actor: mgr, reason: f2 === "cancelled" ? pick(r, ["Customer changed mind", "Credit check declined", "Moved out"]) : "Install not possible at address" }); cur = at;
+    }
+    if (!o.outcome && ageDays < 8 && stageNow() !== "installed" && stageNow() !== "activated" && r() < 0.12) {
       o.attention = pick(r, ATTENTION);
       const at = Math.min(NOW - HOUR, cur + 2 * HOUR);
       o.history.push({ at: Math.max(at, t + HOUR / 2), kind: "attention", from: null, to: "flagged", actor: ACTORS_SYS, reason: o.attention }); cur = Math.max(cur, at);
@@ -211,10 +217,11 @@ function buildOrders(): Order[] {
     if (r() < 0.04) dupePool.push(o);
     out.push(o); n++;
   }
-  // Seed deliberate duplicates (same address as an earlier order) for demos
-  for (const src of dupePool.slice(0, 6)) {
-    const later = out.find((x) => x.submittedAt > src.submittedAt + 3 * DAY && x.market === src.market && !x.outcome && x.stage !== "activated");
-    if (later) { later.address = { ...src.address }; later.duplicateOf = [src.no]; later.attention = later.attention ?? "Possible duplicate — review needed"; }
+  // Seed deliberate duplicates: a few recent open orders share an address with an older order
+  const recentOpen = out.filter((x) => x.submittedAt > NOW - 5 * DAY && !x.outcome && x.stage !== "activated");
+  for (const later of recentOpen.slice(2, 5)) {
+    const src = dupePool.find((d) => d.market === later.market && d.submittedAt < later.submittedAt - 3 * DAY);
+    if (src) { later.address = { ...src.address }; later.duplicateOf = [src.no]; later.attention = "Possible duplicate — review needed"; later.updatedAt = Math.max(later.updatedAt, later.submittedAt + HOUR); }
   }
   // Demo order used by the duplicate sample button
   const demo = out.find((x) => x.market === "Philadelphia" && x.submittedAt > NOW - 5 * DAY);

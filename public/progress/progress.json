@@ -1,7 +1,7 @@
 {
   "project": "The Sales House — SalesOS",
-  "updated": "2026-10-04T22:10:00Z",
-  "currentFocus": "Phase 0 prototype is built and deployed from this branch. Waiting on team feedback; next up: Phase 1 (database + auth).",
+  "updated": "2026-10-04T23:30:00Z",
+  "currentFocus": "Phase 0 UI v2 shipped: simpler 5-item navigation, dark-first design, one-click next-step on orders. Awaiting team feedback; next up Phase 1.",
   "phases": [
     {
       "id": 0,
@@ -50,7 +50,7 @@
           "s": "done"
         },
         {
-          "t": "Stub screens with empty states",
+          "t": "Simplified IA: Home, Orders, Team, Reports, Admin (merged queues into Orders views)",
           "s": "done"
         },
         {
@@ -395,6 +395,10 @@
     }
   ],
   "log": [
+    {
+      "d": "2026-10-04",
+      "t": "UI v2: dark-first redesign (Geist), 19 screens cut to 8, pipeline view, one-click next step, simpler orders table."
+    },
     {
       "d": "2026-10-04",
       "t": "Pinned Vercel framework to Next.js via vercel.json so the prototype builds regardless of dashboard preset."

@@ -20,7 +20,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2">
         {items.map((i) => (
-          <div key={i.id} className="fade rounded-lg border border-line bg-surface px-3 py-2 text-[13px]" style={{ boxShadow: "var(--shadow-pop)", borderLeft: `3px solid ${i.tone === "ok" ? "var(--ok)" : "var(--bad)"}` }}>
+          <div key={i.id} className="fade rounded-xl border border-line-strong bg-surface px-4 py-2.5 text-[13px]" style={{ boxShadow: "var(--shadow-pop)", borderLeft: `3px solid ${i.tone === "ok" ? "var(--ok)" : "var(--bad)"}` }}>
             {i.msg}
           </div>
         ))}
@@ -42,9 +42,9 @@ export function Dialog({ open, onClose, title, children, footer, className }: { 
     <dialog ref={ref} aria-labelledby={tid} className={className} onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       {open && (
         <div>
-          <div className="border-b border-line px-5 py-3"><h2 id={tid} className="m-0 text-[15px] font-semibold">{title}</h2></div>
+          <div className="px-5 pb-1 pt-4"><h2 id={tid} className="m-0 text-[16px] font-semibold tracking-tight">{title}</h2></div>
           <div className="px-5 py-4">{children}</div>
-          {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
+          {footer && <div className="flex justify-end gap-2 px-5 pb-4">{footer}</div>}
         </div>
       )}
     </dialog>
@@ -64,11 +64,11 @@ export function Status({ o }: { o: Pick<Order, "stage" | "outcome" | "attention"
 
 export function PageHeader({ title, sub, actions, children }: { title: string; sub?: string; actions?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5">
+    <div className="mb-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="m-0 text-xl font-semibold leading-7 tracking-tight">{title}</h1>
-          {sub && <p className="m-0 mt-0.5 text-muted">{sub}</p>}
+          <h1 className="m-0 text-[26px] font-semibold leading-8 tracking-[-0.03em]">{title}</h1>
+          {sub && <p className="m-0 mt-1 text-muted">{sub}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -79,10 +79,10 @@ export function PageHeader({ title, sub, actions, children }: { title: string; s
 
 export function Segmented<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border border-line-strong bg-surface p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg border border-line bg-surface p-0.5">
       {options.map((o) => (
         <button key={o.value} role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}
-          className={cn("h-7 rounded px-3 text-[12px] font-medium transition-colors", value === o.value ? "bg-brand-bg text-brand" : "text-muted hover:text-ink")}>
+          className={cn("h-7 rounded-md px-3.5 text-[13px] font-medium transition-colors", value === o.value ? "bg-[var(--hover)] text-ink shadow-[inset_0_0_0_1px_var(--border-strong)]" : "text-muted hover:text-ink")}>
           {o.label}
         </button>
       ))}
@@ -103,7 +103,7 @@ export function EmptyState({ title, body, action }: { title: string; body?: stri
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const toast = useToast();
   return (
-    <button type="button" className="rounded px-1 text-[12px] text-faint hover:text-brand" aria-label={`Copy ${label}`}
+    <button type="button" className="rounded px-1 text-[12px] text-faint transition-colors hover:text-brand" aria-label={`Copy ${label}`}
       onClick={() => { navigator.clipboard?.writeText(value).then(() => toast(`${label} copied`), () => toast("Copy not available", "err")); }}>
       Copy
     </button>
@@ -136,9 +136,9 @@ export function Menu({ label, children, align = "right" }: { label: ReactNode; c
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="btn btn-sm" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{label}</button>
+      <button type="button" className="btn" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{label}</button>
       {open && (
-        <div className={cn("fade absolute z-30 mt-1 min-w-[190px] rounded-lg border border-line bg-surface p-1", align === "right" ? "right-0" : "left-0")} style={{ boxShadow: "var(--shadow-pop)" }}>
+        <div className={cn("fade absolute z-30 mt-1 min-w-[200px] rounded-xl border border-line-strong bg-surface p-1", align === "right" ? "right-0" : "left-0")} style={{ boxShadow: "var(--shadow-pop)" }}>
           {children}
         </div>
       )}
@@ -146,5 +146,5 @@ export function Menu({ label, children, align = "right" }: { label: ReactNode; c
   );
 }
 export function MenuItem({ children, onClick, danger }: { children: ReactNode; onClick?: () => void; danger?: boolean }) {
-  return <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-subtle", danger && "text-bad")}>{children}</button>;
+  return <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-subtle", danger && "text-bad")}>{children}</button>;
 }
