@@ -1,149 +1,395 @@
 {
-  "project": "The Sales House — SalesOS",
-  "updated": "2026-10-04T20:00:00Z",
+  "project": "The Sales House \u2014 SalesOS",
+  "updated": "2026-10-04T20:20:00Z",
   "currentFocus": "Plan approved? Waiting on go-ahead to implement Phase 0 (clickable UI prototype) and Phase 1.",
   "phases": [
     {
-      "id": 0, "name": "Foundation + UI prototype", "status": "todo",
+      "id": 0,
+      "name": "Foundation + UI prototype",
+      "status": "todo",
       "objective": "Deployed, clickable SalesOS prototype on mock data for team review.",
       "tasks": [
-        {"t": "Init Next.js + TS strict + Tailwind + lint + CI", "s": "todo"},
-        {"t": "Design tokens (light/dark), typography, spacing", "s": "todo"},
-        {"t": "UI primitives (Button, Input, Table, Dialog, Toast, Skeleton)", "s": "todo"},
-        {"t": "App shell: left nav, top bar, ⌘K palette, demo role switcher", "s": "todo"},
-        {"t": "Overview dashboard", "s": "todo"},
-        {"t": "Orders table (filters, sort, bulk bar)", "s": "todo"},
-        {"t": "Order detail + masked DOB reveal", "s": "todo"},
-        {"t": "Submit Sale form + duplicate banner + confirmation", "s": "todo"},
-        {"t": "Reps, rep profile, leaderboard", "s": "todo"},
-        {"t": "Stub screens with empty states", "s": "todo"},
-        {"t": "Responsive, keyboard and a11y pass", "s": "todo"}
+        {
+          "t": "Init Next.js + TS strict + Tailwind + lint + CI",
+          "s": "todo"
+        },
+        {
+          "t": "Design tokens (light/dark), typography, spacing",
+          "s": "todo"
+        },
+        {
+          "t": "UI primitives (Button, Input, Table, Dialog, Toast, Skeleton)",
+          "s": "todo"
+        },
+        {
+          "t": "App shell: left nav, top bar, \u2318K palette, demo role switcher",
+          "s": "todo"
+        },
+        {
+          "t": "Overview dashboard",
+          "s": "todo"
+        },
+        {
+          "t": "Orders table (filters, sort, bulk bar)",
+          "s": "todo"
+        },
+        {
+          "t": "Order detail + masked DOB reveal",
+          "s": "todo"
+        },
+        {
+          "t": "Submit Sale form + duplicate banner + confirmation",
+          "s": "todo"
+        },
+        {
+          "t": "Reps, rep profile, leaderboard",
+          "s": "todo"
+        },
+        {
+          "t": "Stub screens with empty states",
+          "s": "todo"
+        },
+        {
+          "t": "Responsive, keyboard and a11y pass",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 1, "name": "Database + authentication", "status": "todo",
+      "id": 1,
+      "name": "Database + authentication",
+      "status": "todo",
       "objective": "Real identity and persistent core schema.",
       "tasks": [
-        {"t": "Supabase projects (local / staging / prod)", "s": "todo"},
-        {"t": "Drizzle schema + SQL triggers, sequences, RLS", "s": "todo"},
-        {"t": "Seed reference data (roles, stages, outcomes, transitions)", "s": "todo"},
-        {"t": "Invite-only auth + MFA + password policy", "s": "todo"},
-        {"t": "Policy layer + permission matrix tests", "s": "todo"},
-        {"t": "Env validation + first-admin bootstrap", "s": "todo"}
+        {
+          "t": "Supabase projects (local / staging / prod)",
+          "s": "todo"
+        },
+        {
+          "t": "Drizzle schema + SQL triggers, sequences, RLS",
+          "s": "todo"
+        },
+        {
+          "t": "Seed reference data (roles, stages, outcomes, transitions)",
+          "s": "todo"
+        },
+        {
+          "t": "Invite-only auth + MFA + password policy",
+          "s": "todo"
+        },
+        {
+          "t": "Policy layer + permission matrix tests",
+          "s": "todo"
+        },
+        {
+          "t": "Env validation + first-admin bootstrap",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 2, "name": "App shell + RBAC", "status": "todo",
+      "id": 2,
+      "name": "App shell + RBAC",
+      "status": "todo",
       "objective": "Permission-driven navigation and server-side guards.",
       "tasks": [
-        {"t": "Permission-driven nav and route guards", "s": "todo"},
-        {"t": "Users / teams / reps admin (audited)", "s": "todo"},
-        {"t": "Deactivation revokes sessions", "s": "todo"}
+        {
+          "t": "Permission-driven nav and route guards",
+          "s": "todo"
+        },
+        {
+          "t": "Users / teams / reps admin (audited)",
+          "s": "todo"
+        },
+        {
+          "t": "Deactivation revokes sessions",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 3, "name": "Order submission", "status": "todo",
+      "id": 3,
+      "name": "Order submission",
+      "status": "todo",
       "objective": "Real, idempotent, transactional order creation.",
       "tasks": [
-        {"t": "submitOrder + checkDuplicates", "s": "todo"},
-        {"t": "DOB encryption + blind index", "s": "todo"},
-        {"t": "Address / phone normalization", "s": "todo"},
-        {"t": "Packages + dealer accounts (minimal admin)", "s": "todo"},
-        {"t": "Draft recovery + confirmation state", "s": "todo"}
+        {
+          "t": "submitOrder + checkDuplicates",
+          "s": "todo"
+        },
+        {
+          "t": "DOB encryption + blind index",
+          "s": "todo"
+        },
+        {
+          "t": "Address / phone normalization",
+          "s": "todo"
+        },
+        {
+          "t": "Packages + dealer accounts (minimal admin)",
+          "s": "todo"
+        },
+        {
+          "t": "Draft recovery + confirmation state",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 4, "name": "Orders management", "status": "todo",
+      "id": 4,
+      "name": "Orders management",
+      "status": "todo",
       "objective": "Server-side list, detail, edits and status machine.",
       "tasks": [
-        {"t": "Server-side list, keyset pagination, saved views", "s": "todo"},
-        {"t": "Detail, edit rules, cutoff", "s": "todo"},
-        {"t": "Status machine + immutable history", "s": "todo"},
-        {"t": "Bulk updates + safe exports", "s": "todo"},
-        {"t": "DOB reveal flow + audit", "s": "todo"}
+        {
+          "t": "Server-side list, keyset pagination, saved views",
+          "s": "todo"
+        },
+        {
+          "t": "Detail, edit rules, cutoff",
+          "s": "todo"
+        },
+        {
+          "t": "Status machine + immutable history",
+          "s": "todo"
+        },
+        {
+          "t": "Bulk updates + safe exports",
+          "s": "todo"
+        },
+        {
+          "t": "DOB reveal flow + audit",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 5, "name": "Dashboard + reporting", "status": "todo",
+      "id": 5,
+      "name": "Dashboard + reporting",
+      "status": "todo",
       "objective": "Metrics from one shared definitions module.",
       "tasks": [
-        {"t": "Metric definitions + reporting queries", "s": "todo"},
-        {"t": "Overview, leaderboard, rep profile", "s": "todo"},
-        {"t": "Exceptions / Installations / Chargebacks queues", "s": "todo"}
+        {
+          "t": "Metric definitions + reporting queries",
+          "s": "todo"
+        },
+        {
+          "t": "Overview, leaderboard, rep profile",
+          "s": "todo"
+        },
+        {
+          "t": "Exceptions / Installations / Chargebacks queues",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 6, "name": "Security + audit hardening", "status": "todo",
+      "id": 6,
+      "name": "Security + audit hardening",
+      "status": "todo",
       "objective": "Every threat-model row has a control and a test.",
       "tasks": [
-        {"t": "Audit log UI", "s": "todo"},
-        {"t": "CSP / headers / rate limits / MFA enforcement", "s": "todo"},
-        {"t": "Sentry PII scrubbers + secret scanning", "s": "todo"},
-        {"t": "Retention job + backup restore drill", "s": "todo"}
+        {
+          "t": "Audit log UI",
+          "s": "todo"
+        },
+        {
+          "t": "CSP / headers / rate limits / MFA enforcement",
+          "s": "todo"
+        },
+        {
+          "t": "Sentry PII scrubbers + secret scanning",
+          "s": "todo"
+        },
+        {
+          "t": "Retention job + backup restore drill",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 7, "name": "Testing", "status": "todo",
+      "id": 7,
+      "name": "Testing",
+      "status": "todo",
       "objective": "Coverage and load targets met; UAT done.",
       "tasks": [
-        {"t": "Authorization matrix tests", "s": "todo"},
-        {"t": "E2E + axe accessibility", "s": "todo"},
-        {"t": "Load test at 100 concurrent reps", "s": "todo"},
-        {"t": "UAT with real reps on staging", "s": "todo"}
+        {
+          "t": "Authorization matrix tests",
+          "s": "todo"
+        },
+        {
+          "t": "E2E + axe accessibility",
+          "s": "todo"
+        },
+        {
+          "t": "Load test at 100 concurrent reps",
+          "s": "todo"
+        },
+        {
+          "t": "UAT with real reps on staging",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 8, "name": "Production deployment", "status": "todo",
+      "id": 8,
+      "name": "Production deployment",
+      "status": "todo",
       "objective": "Staged go-live with checklist complete.",
       "tasks": [
-        {"t": "Prod Supabase / Vercel / KMS", "s": "todo"},
-        {"t": "Domain, TLS, env vars, gated migrations", "s": "todo"},
-        {"t": "Launch checklist + pilot team rollout", "s": "todo"}
+        {
+          "t": "Prod Supabase / Vercel / KMS",
+          "s": "todo"
+        },
+        {
+          "t": "Domain, TLS, env vars, gated migrations",
+          "s": "todo"
+        },
+        {
+          "t": "Launch checklist + pilot team rollout",
+          "s": "todo"
+        }
       ]
     },
     {
-      "id": 9, "name": "Future integrations", "status": "todo",
+      "id": 9,
+      "name": "Future integrations",
+      "status": "todo",
       "objective": "CSV import; Zoey only if an official API exists.",
       "tasks": [
-        {"t": "CSV import adapter", "s": "todo"},
-        {"t": "Commission engine", "s": "todo"},
-        {"t": "Zoey adapter (blocked on official API)", "s": "blocked"}
+        {
+          "t": "CSV import adapter",
+          "s": "todo"
+        },
+        {
+          "t": "Commission engine",
+          "s": "todo"
+        },
+        {
+          "t": "Zoey adapter (blocked on official API)",
+          "s": "blocked"
+        }
       ]
     }
   ],
   "readiness": [
-    {"group": "Decisions", "items": [
-      {"t": "Approve plan and status model", "done": false},
-      {"t": "Auth provider: Supabase Auth (recommended) vs Clerk", "done": false},
-      {"t": "Programs / country: Xfinity only, or Rogers too?", "done": false},
-      {"t": "Time zone, week start, markets", "done": false},
-      {"t": "Rep edit cutoff and self-cancel policy", "done": false},
-      {"t": "Visibility rules (DOB, leaderboard, PII)", "done": false},
-      {"t": "DOB retention period", "done": false},
-      {"t": "Legal review of storing DOB", "done": false}
-    ]},
-    {"group": "Brand assets", "items": [
-      {"t": "Logo (SVG, light + dark)", "done": false},
-      {"t": "Brand purple hex", "done": false}
-    ]},
-    {"group": "Business data", "items": [
-      {"t": "Rep list with teams, managers, markets", "done": false},
-      {"t": "Xfinity package catalog + prices", "done": false},
-      {"t": "Dealer login identifiers (usernames only)", "done": false},
-      {"t": "Sample anonymized Zoey order fields", "done": false}
-    ]},
-    {"group": "Accounts", "items": [
-      {"t": "GitHub repo with branch protection", "done": true},
-      {"t": "Vercel team", "done": false},
-      {"t": "Supabase (staging + prod)", "done": false},
-      {"t": "AWS KMS", "done": false},
-      {"t": "Sentry", "done": false},
-      {"t": "Upstash Redis", "done": false},
-      {"t": "Resend + verified domain (later)", "done": false}
-    ]}
+    {
+      "group": "Decisions",
+      "items": [
+        {
+          "t": "Approve plan and status model",
+          "done": false
+        },
+        {
+          "t": "Auth provider: Supabase Auth (recommended) vs Clerk",
+          "done": false
+        },
+        {
+          "t": "Programs / country: Xfinity only, or Rogers too?",
+          "done": false
+        },
+        {
+          "t": "Time zone, week start, markets",
+          "done": false
+        },
+        {
+          "t": "Rep edit cutoff and self-cancel policy",
+          "done": false
+        },
+        {
+          "t": "Visibility rules (DOB, leaderboard, PII)",
+          "done": false
+        },
+        {
+          "t": "DOB retention period",
+          "done": false
+        },
+        {
+          "t": "Legal review of storing DOB",
+          "done": false
+        }
+      ]
+    },
+    {
+      "group": "Brand assets",
+      "items": [
+        {
+          "t": "Logo (SVG, light + dark)",
+          "done": false
+        },
+        {
+          "t": "Brand purple hex",
+          "done": false
+        }
+      ]
+    },
+    {
+      "group": "Business data",
+      "items": [
+        {
+          "t": "Rep list with teams, managers, markets",
+          "done": false
+        },
+        {
+          "t": "Xfinity package catalog + prices",
+          "done": false
+        },
+        {
+          "t": "Dealer login identifiers (usernames only)",
+          "done": false
+        },
+        {
+          "t": "Sample anonymized Zoey order fields",
+          "done": false
+        }
+      ]
+    },
+    {
+      "group": "Accounts",
+      "items": [
+        {
+          "t": "GitHub repo with branch protection",
+          "done": true
+        },
+        {
+          "t": "Vercel team",
+          "done": true
+        },
+        {
+          "t": "Supabase (staging + prod)",
+          "done": false
+        },
+        {
+          "t": "AWS KMS",
+          "done": false
+        },
+        {
+          "t": "Sentry",
+          "done": false
+        },
+        {
+          "t": "Upstash Redis",
+          "done": false
+        },
+        {
+          "t": "Resend + verified domain (later)",
+          "done": false
+        }
+      ]
+    }
   ],
   "log": [
-    {"d": "2026-10-04", "t": "Engineering plan written and pushed (docs/SALESOS_PLAN.md)."},
-    {"d": "2026-10-04", "t": "Progress tracker created."}
+    {
+      "d": "2026-10-04",
+      "t": "Fixed Vercel 404: root vercel.json now serves the progress/ folder."
+    },
+    {
+      "d": "2026-10-04",
+      "t": "Engineering plan written and pushed (docs/SALESOS_PLAN.md)."
+    },
+    {
+      "d": "2026-10-04",
+      "t": "Progress tracker created."
+    }
   ]
 }
