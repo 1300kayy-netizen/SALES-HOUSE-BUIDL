@@ -1,6 +1,6 @@
 {
   "project": "The Sales House — SalesOS",
-  "updated": "2026-10-04T21:30:00Z",
+  "updated": "2026-10-04T22:10:00Z",
   "currentFocus": "Phase 0 prototype is built and deployed from this branch. Waiting on team feedback; next up: Phase 1 (database + auth).",
   "phases": [
     {
@@ -395,6 +395,10 @@
     }
   ],
   "log": [
+    {
+      "d": "2026-10-04",
+      "t": "Pinned Vercel framework to Next.js via vercel.json so the prototype builds regardless of dashboard preset."
+    },
     {
       "d": "2026-10-04",
       "t": "Repo is now a Next.js app; tracker moved to /progress."
