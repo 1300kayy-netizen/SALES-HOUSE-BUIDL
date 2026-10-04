@@ -1,7 +1,7 @@
 {
-  "project": "The Sales House \u2014 SalesOS",
-  "updated": "2026-10-04T20:20:00Z",
-  "currentFocus": "Plan approved? Waiting on go-ahead to implement Phase 0 (clickable UI prototype) and Phase 1.",
+  "project": "The Sales House — SalesOS",
+  "updated": "2026-10-04T21:30:00Z",
+  "currentFocus": "Phase 0 prototype is built and deployed from this branch. Waiting on team feedback; next up: Phase 1 (database + auth).",
   "phases": [
     {
       "id": 0,
@@ -10,48 +10,64 @@
       "objective": "Deployed, clickable SalesOS prototype on mock data for team review.",
       "tasks": [
         {
-          "t": "Init Next.js + TS strict + Tailwind + lint + CI",
+          "t": "Init Next.js + TypeScript strict + Tailwind",
+          "s": "done"
+        },
+        {
+          "t": "ESLint + Prettier + GitHub Actions CI",
           "s": "todo"
         },
         {
           "t": "Design tokens (light/dark), typography, spacing",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "UI primitives (Button, Input, Table, Dialog, Toast, Skeleton)",
-          "s": "todo"
+          "s": "done"
         },
         {
-          "t": "App shell: left nav, top bar, \u2318K palette, demo role switcher",
-          "s": "todo"
+          "t": "App shell: left nav, top bar, ⌘K palette, demo role switcher",
+          "s": "done"
         },
         {
           "t": "Overview dashboard",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "Orders table (filters, sort, bulk bar)",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "Order detail + masked DOB reveal",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "Submit Sale form + duplicate banner + confirmation",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "Reps, rep profile, leaderboard",
-          "s": "todo"
+          "s": "done"
         },
         {
           "t": "Stub screens with empty states",
+          "s": "done"
+        },
+        {
+          "t": "Responsive pass (checked 390px + 1440px)",
+          "s": "done"
+        },
+        {
+          "t": "Full keyboard + screen-reader a11y audit (axe)",
           "s": "todo"
         },
         {
-          "t": "Responsive, keyboard and a11y pass",
+          "t": "Playwright smoke tests",
           "s": "todo"
+        },
+        {
+          "t": "Team review of prototype → feedback applied",
+          "s": "in_progress"
         }
       ]
     },
@@ -379,6 +395,14 @@
     }
   ],
   "log": [
+    {
+      "d": "2026-10-04",
+      "t": "Repo is now a Next.js app; tracker moved to /progress."
+    },
+    {
+      "d": "2026-10-04",
+      "t": "Phase 0: clickable SalesOS prototype built (19 screens, 3 demo roles, light/dark, mock data)."
+    },
     {
       "d": "2026-10-04",
       "t": "Fixed Vercel 404: root vercel.json now serves the progress/ folder."

@@ -55,7 +55,7 @@ li.done span:last-child{color:var(--muted);text-decoration:line-through}
 <body>
 <header><div class="wrap top">
   <div><h1 id="title">SalesOS Progress</h1><div class="sub" id="meta">Loading…</div></div>
-  <button id="refresh" type="button">Refresh</button>
+  <div style="display:flex;gap:8px"><a href="/" style="text-decoration:none"><button type="button">Open prototype</button></a><button id="refresh" type="button">Refresh</button></div>
 </div></header>
 <main class="wrap" id="app" aria-live="polite"></main>
 <script>
@@ -97,7 +97,7 @@ function render(d){
  <div class="panel log"><ul>${d.log.map(l=>`<li><span class="d">${esc(l.d)}</span><span>${esc(l.t)}</span></li>`).join("")}</ul></div>`;
 }
 async function load(){
- try{const r=await fetch("progress.json?"+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error(r.status);render(await r.json())}
+ try{const r=await fetch("/progress/progress.json?"+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error(r.status);render(await r.json())}
  catch(e){document.getElementById("app").innerHTML='<div class="err">Could not load progress.json ('+esc(e.message)+'). If opened as a local file, serve it over http instead.</div>'}
 }
 document.getElementById("refresh").onclick=load;
